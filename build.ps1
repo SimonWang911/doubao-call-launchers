@@ -69,9 +69,7 @@ function Build-App {
         $FlatFiles
     if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed for $Name" }
 
-    $Sources = @(
-        (Join-Path $Root 'common\src\com\simon\doubaolauncher\CallLauncherActivity.java')
-    )
+    $Sources = Get-ChildItem (Join-Path $Root 'common\src') -Recurse -Filter '*.java' | ForEach-Object { $_.FullName }
     javac -encoding UTF-8 -source 8 -target 8 -bootclasspath $AndroidJar -d $Classes $Sources
     if ($LASTEXITCODE -ne 0) { throw "javac failed for $Name" }
 

@@ -49,6 +49,8 @@ $voiceDump = (Invoke-Adb shell dumpsys package com.simon.doubao.voicecall) -join
 $videoDump = (Invoke-Adb shell dumpsys package com.simon.doubao.videocall) -join "`n"
 Assert-Contains $voiceDump 'android.permission.MODIFY_AUDIO_SETTINGS: granted=true' 'Voice package audio settings permission is not granted.'
 Assert-Contains $videoDump 'android.permission.MODIFY_AUDIO_SETTINGS: granted=true' 'Video package audio settings permission is not granted.'
+Assert-Contains $voiceDump 'android.permission.INTERNET: granted=true' 'Voice package internet permission is not granted.'
+Assert-Contains $videoDump 'android.permission.INTERNET: granted=true' 'Video package internet permission is not granted.'
 
 $voiceResolve = (Invoke-Adb shell cmd package resolve-activity --brief com.simon.doubao.voicecall) -join "`n"
 $videoResolve = (Invoke-Adb shell cmd package resolve-activity --brief com.simon.doubao.videocall) -join "`n"

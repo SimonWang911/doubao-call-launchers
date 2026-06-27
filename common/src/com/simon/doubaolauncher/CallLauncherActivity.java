@@ -20,8 +20,6 @@ public class CallLauncherActivity extends Activity {
     private static final String TAG = "DoubaoCallLauncher";
     private static final String EXTRA_MODE = "com.simon.doubaolauncher.MODE";
     private static final String MODE_VIDEO = "video";
-    private static final String DOUBAO_PACKAGE = "com.larus.nova";
-    private static final String DOUBAO_ALIAS_ACTIVITY = "com.larus.home.impl.alias.AliasActivity1";
     private static final long SHORT_FINISH_DELAY_MILLIS = 1200L;
     private static final long MAX_FINISH_DELAY_MILLIS = 6000L;
     private static final String STATUS_UTTERANCE_ID = "doubao_call_launcher_status";
@@ -42,21 +40,8 @@ public class CallLauncherActivity extends Activity {
             "\u8c46\u5305\u901a\u8bdd\u5165\u53e3\u5931\u6548\uff0c\u8bf7\u5bb6\u4eba\u534f\u52a9\u66f4\u65b0\u3002";
     private static final String OPEN_FAILED_MESSAGE =
             "\u6253\u5f00\u8c46\u5305\u5931\u8d25\uff0c\u8bf7\u5bb6\u4eba\u534f\u52a9\u68c0\u67e5\u3002";
-
-    private static final String VOICE_CALL_URI =
-            "sslocal://flow/realtime_chat?is_from_outer=true"
-                    + "&bot_id=7234781073513644036"
-                    + "&open_method=shortcuts"
-                    + "&sec_scene=shortcuts_call"
-                    + "&enter_method=shortcuts";
-
-    private static final String VIDEO_CALL_URI =
-            "sslocal://flow/realtime_chat?is_from_outer=true"
-                    + "&bot_id=7234781073513644036"
-                    + "&open_method=shortcuts"
-                    + "&open_vlm=1"
-                    + "&sec_scene=shortcuts_video_call"
-                    + "&enter_method=shortcuts";
+    private static final String RULE_LOAD_FAILED_MESSAGE =
+            "\u89c4\u5219\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u5bb6\u4eba\u68c0\u67e5\u7f51\u7edc\u6216\u89c4\u5219\u6587\u4ef6\u3002";
 
     private TextToSpeech tts;
     private boolean activityDestroyed;
@@ -72,11 +57,40 @@ public class CallLauncherActivity extends Activity {
     private void launchDoubaoCall() {
         maximizeAudibleVolume();
 
-        String mode = readLaunchMode();
-        boolean video = MODE_VIDEO.equals(mode);
-        Log.i(TAG, "launch mode=" + mode + ", video=" + video);
+        final String mode = readLaunchMode();
+        Log.i(TAG, "launch mode=" + mode);
 
-        if (!isPackageInstalled(DOUBAO_PACKAGE)) {
+        final RuleRepository repository = new RuleRepository(this);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final RuleFetchResult result = repository.loadRule();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (activityDestroyed) {
+                            return;
+                        }
+                        handleRuleResult(mode, result);
+                    }
+                });
+            }
+        }, "doubao-rule-loader").start();
+    }
+
+    private void handleRuleResult(String mode, RuleFetchResult result) {
+        if (result == null || !result.hasRule()) {
+            speakAndToast(RULE_LOAD_FAILED_MESSAGE);
+            return;
+        }
+        openDoubaoCall(mode, result.rule);
+    }
+
+    private void openDoubaoCall(String mode, DoubaoRule rule) {
+        boolean video = MODE_VIDEO.equals(mode);
+        CallEntry entry = rule.entryForMode(mode);
+
+        if (!isPackageInstalled(rule.doubaoPackage)) {
             Log.w(TAG, "Doubao package is not installed or not visible.");
             speakAndToast(DOUBAO_NOT_INSTALLED_MESSAGE);
             return;
@@ -84,9 +98,9 @@ public class CallLauncherActivity extends Activity {
 
         speakAndToast(video ? OPENING_VIDEO_MESSAGE : OPENING_VOICE_MESSAGE);
 
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(video ? VIDEO_CALL_URI : VOICE_CALL_URI));
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(entry.uri));
         intent.addCategory(Intent.CATEGORY_LAUNCHER);
-        intent.setComponent(new ComponentName(DOUBAO_PACKAGE, DOUBAO_ALIAS_ACTIVITY));
+        intent.setComponent(new ComponentName(rule.doubaoPackage, rule.doubaoActivity));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         Log.i(TAG, "starting Doubao intent=" + intent.toUri(0));
 
