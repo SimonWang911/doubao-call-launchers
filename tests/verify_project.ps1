@@ -42,6 +42,8 @@ $voiceIconArt = Join-Path $Root 'apps/voice/res/drawable-nodpi/ic_launcher_art.p
 $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.png'
 $buildScript = Join-Path $Root 'build.ps1'
 $refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
+$ruleFile = Join-Path $Root 'rules/doubao-call-rules.json'
+$verifyRules = Join-Path $Root 'tests/verify_rules.ps1'
 $adbSmokeTest = Join-Path $Root 'tests/smoke_adb.ps1'
 $gitignore = Join-Path $Root '.gitignore'
 $voiceAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x8bed)$([char]0x97f3)$([char]0x901a)$([char]0x8bdd)"
@@ -94,7 +96,15 @@ Assert-Exists $voiceIconArt
 Assert-Exists $videoIconArt
 Assert-Exists $buildScript
 Assert-Exists $refactorPlan
+Assert-Exists $ruleFile
+Assert-Exists $verifyRules
 Assert-Exists $adbSmokeTest
+Assert-FileContains $ruleFile '"schemaVersion": 1' 'Rule JSON must declare schemaVersion 1.'
+Assert-FileContains $ruleFile '"ruleVersion": 1' 'Initial rule JSON must declare ruleVersion 1.'
+Assert-FileContains $ruleFile '"doubaoPackage": "com.larus.nova"' 'Rule JSON must target Doubao package only.'
+Assert-FileContains $ruleFile '"voice"' 'Rule JSON must contain a voice entry.'
+Assert-FileContains $ruleFile '"video"' 'Rule JSON must contain a video entry.'
+Assert-FileContains $verifyRules 'Rule verification passed.' 'Rule verification script must check rule semantics.'
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
 Assert-FileContains $buildScript 'DOUBAO_KEYSTORE' 'Build script must support external keystore path.'
@@ -116,4 +126,5 @@ Assert-FileContains $adbSmokeTest 'MODIFY_AUDIO_SETTINGS' 'ADB smoke test must v
 Assert-FileContains $adbSmokeTest 'resolve-activity' 'ADB smoke test must verify launcher activity resolution.'
 Assert-FileContains $adbSmokeTest 'ROM formats resolve-activity output differently' 'ADB smoke test must explain ROM-dependent resolve output failures.'
 
+powershell -ExecutionPolicy Bypass -File $verifyRules
 Write-Host 'Project verification passed.'

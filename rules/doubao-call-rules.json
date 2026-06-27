@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "ruleVersion": 1,
+  "updatedAt": "2026-06-27",
+  "doubaoPackage": "com.larus.nova",
+  "doubaoActivity": "com.larus.home.impl.alias.AliasActivity1",
+  "voice": {
+    "uri": "sslocal://flow/realtime_chat?is_from_outer=true&bot_id=7234781073513644036&open_method=shortcuts&sec_scene=shortcuts_call&enter_method=shortcuts"
+  },
+  "video": {
+    "uri": "sslocal://flow/realtime_chat?is_from_outer=true&bot_id=7234781073513644036&open_method=shortcuts&open_vlm=1&sec_scene=shortcuts_video_call&enter_method=shortcuts"
+  }
+}
