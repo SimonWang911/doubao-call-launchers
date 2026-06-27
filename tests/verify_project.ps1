@@ -41,6 +41,7 @@ $videoRoundIcon = Join-Path $Root 'apps/video/res/mipmap-anydpi-v26/ic_launcher_
 $voiceIconArt = Join-Path $Root 'apps/voice/res/drawable-nodpi/ic_launcher_art.png'
 $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.png'
 $buildScript = Join-Path $Root 'build.ps1'
+$refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
 $voiceAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x8bed)$([char]0x97f3)$([char]0x901a)$([char]0x8bdd)"
 $videoAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x89c6)$([char]0x9891)$([char]0x901a)$([char]0x8bdd)"
 
@@ -74,7 +75,16 @@ Assert-FileContains $videoRoundIcon '@drawable/ic_launcher_art' 'Video round ada
 Assert-Exists $voiceIconArt
 Assert-Exists $videoIconArt
 Assert-Exists $buildScript
+Assert-Exists $refactorPlan
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
+Assert-FileContains $refactorPlan 'armTtsTimeout' 'Refactor plan must separate TTS timeout arming from finish requests.'
+Assert-FileContains $refactorPlan 'finishSoon' 'Refactor plan must finish soon after TTS completion or failure.'
+Assert-FileContains $refactorPlan 'cancelTimeoutFinish' 'Refactor plan must cancel timeout callbacks when TTS finishes first.'
+Assert-FileContains $refactorPlan 'finishRequested' 'Refactor plan must track finish requests separately from timeout arming.'
+Assert-FileContains $refactorPlan 'Remove the immediately following standalone `finishAfterDelay();`' 'Refactor plan must explicitly remove duplicate post-TTS finish calls.'
+Assert-FileContains $refactorPlan 'versionCode must only go up' 'Refactor plan must document monotonic versionCode upgrades.'
+Assert-FileContains $refactorPlan 'ROM formats resolve-activity output differently' 'Refactor plan must document ROM-dependent ADB smoke-test output risk.'
+Assert-FileContains $refactorPlan 'structural/configuration guard' 'Refactor plan must state static checks are not full behavior tests.'
 
 Write-Host 'Project verification passed.'
