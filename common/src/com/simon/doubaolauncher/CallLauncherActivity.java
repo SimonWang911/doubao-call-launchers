@@ -10,6 +10,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -21,7 +22,9 @@ public class CallLauncherActivity extends Activity {
     private static final String MODE_VIDEO = "video";
     private static final String DOUBAO_PACKAGE = "com.larus.nova";
     private static final String DOUBAO_ALIAS_ACTIVITY = "com.larus.home.impl.alias.AliasActivity1";
-    private static final long FINISH_DELAY_MILLIS = 2500L;
+    private static final long SHORT_FINISH_DELAY_MILLIS = 1200L;
+    private static final long MAX_FINISH_DELAY_MILLIS = 6000L;
+    private static final String STATUS_UTTERANCE_ID = "doubao_call_launcher_status";
 
     private static final String VOLUME_READY_MESSAGE =
             "\u97f3\u91cf\u5df2\u8c03\u5230\u6700\u5927\u3002";
@@ -56,6 +59,9 @@ public class CallLauncherActivity extends Activity {
                     + "&enter_method=shortcuts";
 
     private TextToSpeech tts;
+    private boolean activityDestroyed;
+    private boolean finishRequested;
+    private Runnable timeoutFinishRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,7 +79,6 @@ public class CallLauncherActivity extends Activity {
         if (!isPackageInstalled(DOUBAO_PACKAGE)) {
             Log.w(TAG, "Doubao package is not installed or not visible.");
             speakAndToast(DOUBAO_NOT_INSTALLED_MESSAGE);
-            finishAfterDelay();
             return;
         }
 
@@ -88,15 +93,12 @@ public class CallLauncherActivity extends Activity {
         try {
             startActivity(intent);
             Log.i(TAG, "Doubao startActivity dispatched.");
-            finishAfterDelay();
         } catch (ActivityNotFoundException ex) {
             Log.e(TAG, "Doubao activity not found.", ex);
             speakAndToast(ENTRY_UNAVAILABLE_MESSAGE);
-            finishAfterDelay();
         } catch (RuntimeException ex) {
             Log.e(TAG, "Failed to open Doubao.", ex);
             speakAndToast(OPEN_FAILED_MESSAGE);
-            finishAfterDelay();
         }
     }
 
@@ -158,27 +160,115 @@ public class CallLauncherActivity extends Activity {
 
     private void speakAndToast(final String message) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-        tts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+        final TextToSpeech[] engineHolder = new TextToSpeech[1];
+        TextToSpeech engine = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
-                if (status == TextToSpeech.SUCCESS) {
-                    tts.setLanguage(Locale.CHINA);
-                    tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "doubao_call_launcher_status");
+                TextToSpeech activeEngine = engineHolder[0];
+                if (activityDestroyed || activeEngine == null || activeEngine != tts) {
+                    if (activeEngine != null) {
+                        activeEngine.shutdown();
+                    }
+                    return;
+                }
+
+                if (status != TextToSpeech.SUCCESS) {
+                    Log.w(TAG, "TextToSpeech init failed with status=" + status);
+                    finishSoon();
+                    return;
+                }
+
+                activeEngine.setLanguage(Locale.CHINA);
+                activeEngine.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override
+                    public void onStart(String utteranceId) {
+                        Log.i(TAG, "TTS started.");
+                    }
+
+                    @Override
+                    public void onDone(String utteranceId) {
+                        finishSoon();
+                    }
+
+                    @Override
+                    public void onError(String utteranceId) {
+                        finishSoon();
+                    }
+                });
+
+                int result = activeEngine.speak(message, TextToSpeech.QUEUE_FLUSH, null, STATUS_UTTERANCE_ID);
+                if (result == TextToSpeech.ERROR) {
+                    Log.w(TAG, "TextToSpeech speak failed.");
+                    finishSoon();
                 }
             }
         });
+        engineHolder[0] = engine;
+        tts = engine;
+        armTtsTimeout();
     }
 
-    private void finishAfterDelay() {
+    private void armTtsTimeout() {
+        cancelTimeoutFinish();
+        timeoutFinishRunnable = new Runnable() {
+            @Override
+            public void run() {
+                timeoutFinishRunnable = null;
+                if (!activityDestroyed && !finishRequested) {
+                    finishNow();
+                }
+            }
+        };
+        getWindow().getDecorView().postDelayed(timeoutFinishRunnable, MAX_FINISH_DELAY_MILLIS);
+    }
+
+    private void finishSoon() {
+        if (activityDestroyed || finishRequested) {
+            return;
+        }
+        finishRequested = true;
+        cancelTimeoutFinish();
+        finishAfterDelay(SHORT_FINISH_DELAY_MILLIS);
+    }
+
+    private void finishAfterDelay(long delayMillis) {
         getWindow().getDecorView().postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (tts != null) {
-                    tts.shutdown();
-                    tts = null;
-                }
-                finish();
+                finishNow();
             }
-        }, FINISH_DELAY_MILLIS);
+        }, delayMillis);
+    }
+
+    private void finishNow() {
+        if (activityDestroyed) {
+            return;
+        }
+        finishRequested = true;
+        cancelTimeoutFinish();
+        shutdownTts();
+        finish();
+    }
+
+    private void cancelTimeoutFinish() {
+        if (timeoutFinishRunnable != null) {
+            getWindow().getDecorView().removeCallbacks(timeoutFinishRunnable);
+            timeoutFinishRunnable = null;
+        }
+    }
+
+    private void shutdownTts() {
+        if (tts != null) {
+            tts.shutdown();
+            tts = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        activityDestroyed = true;
+        cancelTimeoutFinish();
+        shutdownTts();
+        super.onDestroy();
     }
 }
