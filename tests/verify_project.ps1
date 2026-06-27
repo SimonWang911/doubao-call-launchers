@@ -42,6 +42,7 @@ $voiceIconArt = Join-Path $Root 'apps/voice/res/drawable-nodpi/ic_launcher_art.p
 $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.png'
 $buildScript = Join-Path $Root 'build.ps1'
 $refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
+$adbSmokeTest = Join-Path $Root 'tests/smoke_adb.ps1'
 $gitignore = Join-Path $Root '.gitignore'
 $voiceAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x8bed)$([char]0x97f3)$([char]0x901a)$([char]0x8bdd)"
 $videoAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x89c6)$([char]0x9891)$([char]0x901a)$([char]0x8bdd)"
@@ -93,6 +94,7 @@ Assert-Exists $voiceIconArt
 Assert-Exists $videoIconArt
 Assert-Exists $buildScript
 Assert-Exists $refactorPlan
+Assert-Exists $adbSmokeTest
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
 Assert-FileContains $buildScript 'DOUBAO_KEYSTORE' 'Build script must support external keystore path.'
@@ -108,5 +110,10 @@ Assert-FileContains $refactorPlan 'Remove the immediately following standalone `
 Assert-FileContains $refactorPlan 'versionCode must only go up' 'Refactor plan must document monotonic versionCode upgrades.'
 Assert-FileContains $refactorPlan 'ROM formats resolve-activity output differently' 'Refactor plan must document ROM-dependent ADB smoke-test output risk.'
 Assert-FileContains $refactorPlan 'structural/configuration guard' 'Refactor plan must state static checks are not full behavior tests.'
+Assert-FileContains $adbSmokeTest 'LaunchVoice' 'ADB smoke test must require an explicit opt-in to launch voice.'
+Assert-FileContains $adbSmokeTest 'LaunchVideo' 'ADB smoke test must require an explicit opt-in to launch video.'
+Assert-FileContains $adbSmokeTest 'MODIFY_AUDIO_SETTINGS' 'ADB smoke test must verify audio settings permission.'
+Assert-FileContains $adbSmokeTest 'resolve-activity' 'ADB smoke test must verify launcher activity resolution.'
+Assert-FileContains $adbSmokeTest 'ROM formats resolve-activity output differently' 'ADB smoke test must explain ROM-dependent resolve output failures.'
 
 Write-Host 'Project verification passed.'
