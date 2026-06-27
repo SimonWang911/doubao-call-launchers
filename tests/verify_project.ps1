@@ -33,6 +33,10 @@ $voiceManifest = Join-Path $Root 'apps/voice/AndroidManifest.xml'
 $videoManifest = Join-Path $Root 'apps/video/AndroidManifest.xml'
 $launcherActivity = Join-Path $Root 'common/src/com/simon/doubaolauncher/CallLauncherActivity.java'
 $ruleUrlCandidates = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleUrlCandidates.java'
+$callEntry = Join-Path $Root 'common/src/com/simon/doubaolauncher/CallEntry.java'
+$doubaoRule = Join-Path $Root 'common/src/com/simon/doubaolauncher/DoubaoRule.java'
+$ruleValidationException = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleValidationException.java'
+$doubaoRuleParser = Join-Path $Root 'common/src/com/simon/doubaolauncher/DoubaoRuleParser.java'
 $voiceStrings = Join-Path $Root 'apps/voice/res/values/strings.xml'
 $videoStrings = Join-Path $Root 'apps/video/res/values/strings.xml'
 $voiceIcon = Join-Path $Root 'apps/voice/res/mipmap-anydpi-v26/ic_launcher.xml'
@@ -106,6 +110,10 @@ Assert-Exists $remoteRuleUrl
 Assert-Exists $verifyRules
 Assert-Exists $adbSmokeTest
 Assert-Exists $ruleUrlCandidates
+Assert-Exists $callEntry
+Assert-Exists $doubaoRule
+Assert-Exists $ruleValidationException
+Assert-Exists $doubaoRuleParser
 Assert-FileContains $ruleFile '"schemaVersion": 1' 'Rule JSON must declare schemaVersion 1.'
 Assert-FileContains $ruleFile '"ruleVersion": 1' 'Initial rule JSON must declare ruleVersion 1.'
 Assert-FileContains $ruleFile '"doubaoPackage": "com.larus.nova"' 'Rule JSON must target Doubao package only.'
@@ -133,6 +141,10 @@ $ghfastIndex = $ruleUrlContent.IndexOf('add(urls, GHFAST_TOP_PREFIX + cleanRawUr
 if (-not ($ghProxyIndex -ge 0 -and $rawIndex -gt $ghProxyIndex -and $wgetIndex -gt $rawIndex -and $ghfastIndex -gt $wgetIndex)) {
     throw 'Rule URL candidates must be ordered as gh-proxy, raw, wget.la, ghfast.top.'
 }
+Assert-FileContains $doubaoRuleParser 'SUPPORTED_SCHEMA_VERSION = 1' 'Rule parser must declare supported schema version.'
+Assert-FileContains $doubaoRuleParser 'ALLOWED_DOUBAO_PACKAGE = "com.larus.nova"' 'Rule parser must restrict Doubao package.'
+Assert-FileContains $doubaoRuleParser 'sslocal://' 'Rule parser must restrict call URI scheme.'
+Assert-FileContains $doubaoRuleParser 'ruleVersion' 'Rule parser must validate ruleVersion.'
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript "Get-ChildItem (Join-Path `$Root 'common\src') -Recurse -Filter '*.java'" 'Build script must compile all common Java sources.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
