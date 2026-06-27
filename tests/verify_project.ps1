@@ -38,6 +38,8 @@ $doubaoRule = Join-Path $Root 'common/src/com/simon/doubaolauncher/DoubaoRule.ja
 $ruleValidationException = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleValidationException.java'
 $doubaoRuleParser = Join-Path $Root 'common/src/com/simon/doubaolauncher/DoubaoRuleParser.java'
 $ruleCache = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleCache.java'
+$ruleFetchResult = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleFetchResult.java'
+$ruleRepository = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleRepository.java'
 $voiceStrings = Join-Path $Root 'apps/voice/res/values/strings.xml'
 $videoStrings = Join-Path $Root 'apps/video/res/values/strings.xml'
 $voiceIcon = Join-Path $Root 'apps/voice/res/mipmap-anydpi-v26/ic_launcher.xml'
@@ -116,6 +118,8 @@ Assert-Exists $doubaoRule
 Assert-Exists $ruleValidationException
 Assert-Exists $doubaoRuleParser
 Assert-Exists $ruleCache
+Assert-Exists $ruleFetchResult
+Assert-Exists $ruleRepository
 Assert-FileContains $ruleFile '"schemaVersion": 1' 'Rule JSON must declare schemaVersion 1.'
 Assert-FileContains $ruleFile '"ruleVersion": 1' 'Initial rule JSON must declare ruleVersion 1.'
 Assert-FileContains $ruleFile '"doubaoPackage": "com.larus.nova"' 'Rule JSON must target Doubao package only.'
@@ -152,6 +156,18 @@ Assert-FileContains $ruleCache 'KEY_RULE_JSON' 'Rule cache must store the last v
 Assert-FileContains $ruleCache 'commit()' 'Rule cache must use deterministic commit writes.'
 Assert-FileContains $ruleCache 'save(DoubaoRule rule)' 'Rule cache must save validated rules only.'
 Assert-FileContains $ruleCache 'load()' 'Rule cache must load cached rules.'
+Assert-FileContains $ruleRepository 'HttpURLConnection' 'Rule repository must fetch remote rules with HttpURLConnection.'
+Assert-FileContains $ruleRepository 'setConnectTimeout' 'Rule repository must use a connect timeout.'
+Assert-FileContains $ruleRepository 'setReadTimeout' 'Rule repository must use a read timeout.'
+Assert-FileContains $ruleRepository 'RuleUrlCandidates.build' 'Rule repository must use ordered URL candidates.'
+Assert-FileContains $ruleRepository 'remoteRule.ruleVersion < cached.ruleVersion' 'Rule repository must reject older remote rules.'
+Assert-FileContains $ruleRepository 'cache.save(remoteRule)' 'Rule repository must save valid remote rules.'
+Assert-FileContains $ruleRepository 'RuleFetchResult.fromCache' 'Rule repository must fall back to valid cache.'
+Assert-FileContains $ruleRepository 'raw.githubusercontent.com' 'Rule repository must contain the public raw GitHub rule URL.'
+$ruleRepositoryContent = Get-Content -Raw -Encoding UTF8 $ruleRepository
+if ($ruleRepositoryContent.Contains('raw-url-placeholder')) {
+    throw 'RuleRepository must not contain placeholder URL text.'
+}
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript "Get-ChildItem (Join-Path `$Root 'common\src') -Recurse -Filter '*.java'" 'Build script must compile all common Java sources.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
