@@ -9,18 +9,27 @@ $Aapt2 = Join-Path $BuildTools 'aapt2.exe'
 $D8 = Join-Path $BuildTools 'd8.bat'
 $ZipAlign = Join-Path $BuildTools 'zipalign.exe'
 $ApkSigner = Join-Path $BuildTools 'apksigner.bat'
-$KeyStore = Join-Path $Root 'build\doubao-launchers-debug.keystore'
+$DefaultKeyStore = Join-Path $Root 'build\doubao-launchers-debug.keystore'
+$KeyStore = if ($env:DOUBAO_KEYSTORE) { $env:DOUBAO_KEYSTORE } else { $DefaultKeyStore }
+$KeyAlias = if ($env:DOUBAO_KEY_ALIAS) { $env:DOUBAO_KEY_ALIAS } else { 'doubao' }
+$KeyStorePass = if ($env:DOUBAO_KEYSTORE_PASS) { $env:DOUBAO_KEYSTORE_PASS } else { 'android' }
+$KeyPass = if ($env:DOUBAO_KEY_PASS) { $env:DOUBAO_KEY_PASS } else { 'android' }
 $OutDir = Join-Path $Root 'dist'
 
 New-Item -ItemType Directory -Force (Join-Path $Root 'build') | Out-Null
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 if (-not (Test-Path $KeyStore)) {
+    if ($env:DOUBAO_KEYSTORE) {
+        throw "Specified DOUBAO_KEYSTORE does not exist: $KeyStore"
+    }
+
+    Write-Warning "Generating a local debug keystore. Keep this file if you need future overwrite installs."
     keytool -genkeypair `
         -keystore $KeyStore `
-        -storepass android `
-        -keypass android `
-        -alias doubao `
+        -storepass $KeyStorePass `
+        -keypass $KeyPass `
+        -alias $KeyAlias `
         -keyalg RSA `
         -keysize 2048 `
         -validity 10000 `
@@ -83,9 +92,9 @@ function Build-App {
 
     & $ApkSigner sign `
         --ks $KeyStore `
-        --ks-key-alias doubao `
-        --ks-pass pass:android `
-        --key-pass pass:android `
+        --ks-key-alias $KeyAlias `
+        --ks-pass "pass:$KeyStorePass" `
+        --key-pass "pass:$KeyPass" `
         --out $FinalApk `
         $AlignedApk
     if ($LASTEXITCODE -ne 0) { throw "apksigner failed for $Name" }

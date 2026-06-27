@@ -42,11 +42,16 @@ $voiceIconArt = Join-Path $Root 'apps/voice/res/drawable-nodpi/ic_launcher_art.p
 $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.png'
 $buildScript = Join-Path $Root 'build.ps1'
 $refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
+$gitignore = Join-Path $Root '.gitignore'
 $voiceAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x8bed)$([char]0x97f3)$([char]0x901a)$([char]0x8bdd)"
 $videoAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x89c6)$([char]0x9891)$([char]0x901a)$([char]0x8bdd)"
 
 Assert-FileContains $voiceManifest 'package="com.simon.doubao.voicecall"' 'Voice manifest must use the voice package name.'
 Assert-FileContains $videoManifest 'package="com.simon.doubao.videocall"' 'Video manifest must use the video package name.'
+Assert-FileContains $voiceManifest 'android:versionCode="1"' 'Voice APK must declare versionCode 1.'
+Assert-FileContains $voiceManifest 'android:versionName="1.0.0"' 'Voice APK must declare versionName 1.0.0.'
+Assert-FileContains $videoManifest 'android:versionCode="1"' 'Video APK must declare versionCode 1.'
+Assert-FileContains $videoManifest 'android:versionName="1.0.0"' 'Video APK must declare versionName 1.0.0.'
 Assert-FileContains $voiceStrings "<string name=`"app_name`">$voiceAppName</string>" 'Voice app name must be exact.'
 Assert-FileContains $videoStrings "<string name=`"app_name`">$videoAppName</string>" 'Video app name must be exact.'
 Assert-FileContains $voiceManifest 'com.simon.doubaolauncher.MODE' 'Voice manifest must pass a launch mode.'
@@ -90,6 +95,11 @@ Assert-Exists $buildScript
 Assert-Exists $refactorPlan
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
+Assert-FileContains $buildScript 'DOUBAO_KEYSTORE' 'Build script must support external keystore path.'
+Assert-FileContains $buildScript 'DOUBAO_KEY_ALIAS' 'Build script must support external keystore alias.'
+Assert-FileContains $buildScript 'DOUBAO_KEYSTORE_PASS' 'Build script must support external keystore password.'
+Assert-FileContains $buildScript 'DOUBAO_KEY_PASS' 'Build script must support external key password.'
+Assert-FileContains $gitignore '*.keystore' 'Git ignore rules must keep keystores out of source control.'
 Assert-FileContains $refactorPlan 'armTtsTimeout' 'Refactor plan must separate TTS timeout arming from finish requests.'
 Assert-FileContains $refactorPlan 'finishSoon' 'Refactor plan must finish soon after TTS completion or failure.'
 Assert-FileContains $refactorPlan 'cancelTimeoutFinish' 'Refactor plan must cancel timeout callbacks when TTS finishes first.'
