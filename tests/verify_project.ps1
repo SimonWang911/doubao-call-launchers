@@ -71,13 +71,13 @@ Assert-FileContains $voiceManifest 'com.simon.doubaolauncher.MODE' 'Voice manife
 Assert-FileContains $voiceManifest 'voice' 'Voice manifest must pass voice mode.'
 Assert-FileContains $videoManifest 'com.simon.doubaolauncher.MODE' 'Video manifest must pass a launch mode.'
 Assert-FileContains $videoManifest 'video' 'Video manifest must pass video mode.'
-Assert-FileContains $launcherActivity 'com.larus.nova' 'Launcher must target the Doubao package.'
-Assert-FileContains $launcherActivity 'com.larus.home.impl.alias.AliasActivity1' 'Launcher must target the verified Doubao alias activity.'
 Assert-FileContains $launcherActivity 'getActivityInfo' 'Launcher must read manifest meta-data from ActivityInfo.'
 Assert-FileContains $launcherActivity 'metaData.getString(EXTRA_MODE' 'Launcher must read the mode from manifest meta-data.'
-Assert-FileContains $launcherActivity 'shortcuts_call' 'Launcher must contain the verified voice-call URI.'
-Assert-FileContains $launcherActivity 'shortcuts_video_call' 'Launcher must contain the verified video-call URI.'
-Assert-FileContains $launcherActivity 'open_vlm=1' 'Video URI must enable VLM/video mode.'
+Assert-FileContains $launcherActivity 'new Thread' 'Launcher must load remote rules off the main thread.'
+Assert-FileContains $launcherActivity 'RuleRepository' 'Launcher must use RuleRepository.'
+Assert-FileContains $launcherActivity 'runOnUiThread' 'Launcher must return to main thread before UI/Activity work.'
+Assert-FileContains $launcherActivity 'RULE_LOAD_FAILED_MESSAGE' 'Launcher must speak a rule-load failure message.'
+Assert-FileContains $launcherActivity 'entryForMode' 'Launcher must select voice/video entry from the loaded rule.'
 Assert-FileContains $launcherActivity 'AudioManager' 'Launcher must use AudioManager to protect call audibility.'
 Assert-FileContains $launcherActivity 'STREAM_MUSIC' 'Launcher must maximize media volume before launching Doubao.'
 Assert-FileContains $launcherActivity 'STREAM_VOICE_CALL' 'Launcher must attempt to maximize voice-call volume before launching Doubao.'
@@ -167,6 +167,14 @@ Assert-FileContains $ruleRepository 'raw.githubusercontent.com' 'Rule repository
 $ruleRepositoryContent = Get-Content -Raw -Encoding UTF8 $ruleRepository
 if ($ruleRepositoryContent.Contains('raw-url-placeholder')) {
     throw 'RuleRepository must not contain placeholder URL text.'
+}
+$javaSourceRoot = Join-Path $Root 'common/src'
+$forbiddenPatterns = @('shortcuts_call', 'shortcuts_video_call', 'open_vlm=1')
+foreach ($pattern in $forbiddenPatterns) {
+    $match = Get-ChildItem $javaSourceRoot -Recurse -Filter '*.java' | Select-String -Pattern $pattern -SimpleMatch
+    if ($match) {
+        throw "Framework Java must not contain hardcoded Doubao deep-link fragment: $pattern"
+    }
 }
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript "Get-ChildItem (Join-Path `$Root 'common\src') -Recurse -Filter '*.java'" 'Build script must compile all common Java sources.'
