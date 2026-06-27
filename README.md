@@ -94,14 +94,18 @@ Rule file:
 
 Every rule update must increment `ruleVersion`. A lower `ruleVersion` must not overwrite a newer cached rule on phones.
 
-The app tries rule URLs in this order:
+The app tries rule URLs in this order, and fetches the candidates concurrently:
 
 1. `https://gh-proxy.com/` + raw URL
 2. raw URL
 3. `https://wget.la/` + raw URL
 4. `https://ghfast.top/` + raw URL
 
-Remote success updates the local cache. Remote failure uses the last valid cache. Remote failure with no valid cache does not open Doubao.
+When a valid local cache exists, startup waits up to 2 seconds for a newer valid remote rule. If no newer remote rule arrives in that window, the app launches with the cached rule. Late remote results may update the cache for the next launch, but they never trigger a second Doubao launch in the current run.
+
+When no valid local cache exists, startup waits up to 10 seconds for a valid remote rule. If all remote candidates fail or no valid rule arrives by then, the app shows/speaks the rule-load failure message and does not open Doubao.
+
+Rule validation intentionally checks structure and the fixed Doubao package, not Doubao's internal URI parameters. The APK requires `schemaVersion`, a positive `ruleVersion`, `doubaoPackage` equal to `com.larus.nova`, a non-empty `doubaoActivity`, and non-empty voice/video URIs with a URI scheme.
 
 ## Remote Rule Update Procedure
 

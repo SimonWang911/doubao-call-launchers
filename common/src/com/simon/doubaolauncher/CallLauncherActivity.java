@@ -60,7 +60,7 @@ public class CallLauncherActivity extends Activity {
         final String mode = readLaunchMode();
         Log.i(TAG, "launch mode=" + mode);
 
-        final RuleRepository repository = new RuleRepository(this);
+        final RuleRepository repository = new RuleRepository(getApplicationContext());
         new Thread(new Runnable() {
             @Override
             public void run() {

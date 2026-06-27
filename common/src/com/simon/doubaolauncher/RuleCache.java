@@ -30,14 +30,26 @@ final class RuleCache {
         }
     }
 
-    boolean save(DoubaoRule rule) {
+    synchronized boolean saveIfNewer(DoubaoRule rule) {
         if (rule == null || rule.sourceJson == null || rule.sourceJson.trim().length() == 0) {
             return false;
         }
+
+        DoubaoRule cached = load();
+        if (cached != null && rule.ruleVersion <= cached.ruleVersion) {
+            Log.i(TAG, "Skip cache write because remote ruleVersion is not newer: remote="
+                    + rule.ruleVersion + ", cache=" + cached.ruleVersion);
+            return false;
+        }
+
         boolean saved = preferences.edit().putString(KEY_RULE_JSON, rule.sourceJson).commit();
         if (!saved) {
             Log.w(TAG, "Failed to commit rule cache.");
         }
         return saved;
+    }
+
+    boolean save(DoubaoRule rule) {
+        return saveIfNewer(rule);
     }
 }

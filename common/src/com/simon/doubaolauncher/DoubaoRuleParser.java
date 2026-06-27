@@ -1,12 +1,13 @@
 package com.simon.doubaolauncher;
 
+import android.net.Uri;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
 final class DoubaoRuleParser {
     private static final int SUPPORTED_SCHEMA_VERSION = 1;
     private static final String ALLOWED_DOUBAO_PACKAGE = "com.larus.nova";
-    private static final String REQUIRED_URI_PREFIX = "sslocal://";
 
     DoubaoRule parse(String json) throws RuleValidationException {
         String cleanJson = clean(json);
@@ -16,12 +17,12 @@ final class DoubaoRuleParser {
 
         try {
             JSONObject root = new JSONObject(cleanJson);
-            int schemaVersion = root.optInt("schemaVersion", -1);
+            int schemaVersion = parseRequiredInteger(root, "schemaVersion");
             if (schemaVersion != SUPPORTED_SCHEMA_VERSION) {
                 throw new RuleValidationException("Unsupported schemaVersion: " + schemaVersion);
             }
 
-            int ruleVersion = root.optInt("ruleVersion", -1);
+            int ruleVersion = parseRequiredInteger(root, "ruleVersion");
             if (ruleVersion < 1) {
                 throw new RuleValidationException("Invalid ruleVersion: " + ruleVersion);
             }
@@ -56,11 +57,30 @@ final class DoubaoRuleParser {
         if (object == null) {
             throw new RuleValidationException(label + " entry is missing.");
         }
-        String uri = clean(object.optString("uri", ""));
-        if (!uri.startsWith(REQUIRED_URI_PREFIX)) {
-            throw new RuleValidationException(label + " uri must start with sslocal://");
+        String uriString = clean(object.optString("uri", ""));
+        if (uriString.length() == 0) {
+            throw new RuleValidationException(label + " uri is missing.");
         }
-        return new CallEntry(uri);
+
+        Uri uri = Uri.parse(uriString);
+        String scheme = clean(uri.getScheme());
+        if (scheme.length() == 0) {
+            throw new RuleValidationException(label + " uri scheme is missing.");
+        }
+        return new CallEntry(uriString);
+    }
+
+    private int parseRequiredInteger(JSONObject object, String key) throws RuleValidationException {
+        Object value = object.opt(key);
+        if (!(value instanceof Integer) && !(value instanceof Long)) {
+            throw new RuleValidationException(key + " must be an integer.");
+        }
+
+        long parsed = ((Number) value).longValue();
+        if (parsed < Integer.MIN_VALUE || parsed > Integer.MAX_VALUE) {
+            throw new RuleValidationException(key + " is out of integer range.");
+        }
+        return (int) parsed;
     }
 
     private static String clean(String value) {

@@ -154,9 +154,14 @@ if (-not ($ghProxyIndex -ge 0 -and $rawIndex -gt $ghProxyIndex -and $wgetIndex -
 }
 Assert-FileContains $doubaoRuleParser 'SUPPORTED_SCHEMA_VERSION = 1' 'Rule parser must declare supported schema version.'
 Assert-FileContains $doubaoRuleParser 'ALLOWED_DOUBAO_PACKAGE = "com.larus.nova"' 'Rule parser must restrict Doubao package.'
+Assert-FileContains $doubaoRuleParser 'parseRequiredInteger' 'Rule parser must require numeric integer schema and rule versions.'
 Assert-FileContains $doubaoRuleParser 'Uri.parse' 'Rule parser must parse rule URIs with Android Uri.'
 Assert-FileContains $doubaoRuleParser 'getScheme()' 'Rule parser must require a non-empty URI scheme.'
 Assert-FileContains $doubaoRuleParser 'ruleVersion' 'Rule parser must validate ruleVersion.'
+$doubaoRuleParserContent = Get-Content -Raw -Encoding UTF8 $doubaoRuleParser
+if ($doubaoRuleParserContent.Contains('optInt(')) {
+    throw 'Rule parser must not use optInt because it can coerce string versions.'
+}
 Assert-FileContains $ruleCache 'SharedPreferences' 'Rule cache must use SharedPreferences.'
 Assert-FileContains $ruleCache 'KEY_RULE_JSON' 'Rule cache must store the last valid JSON.'
 Assert-FileContains $ruleCache 'commit()' 'Rule cache must use deterministic commit writes.'
