@@ -195,6 +195,7 @@ Assert-FileContains $refactorPlan 'structural/configuration guard' 'Refactor pla
 Assert-FileContains $adbSmokeTest 'LaunchVoice' 'ADB smoke test must require an explicit opt-in to launch voice.'
 Assert-FileContains $adbSmokeTest 'LaunchVideo' 'ADB smoke test must require an explicit opt-in to launch video.'
 Assert-FileContains $adbSmokeTest 'MODIFY_AUDIO_SETTINGS' 'ADB smoke test must verify audio settings permission.'
+Assert-FileContains $adbSmokeTest 'android.permission.INTERNET' 'ADB smoke test must verify internet permission.'
 Assert-FileContains $adbSmokeTest 'resolve-activity' 'ADB smoke test must verify launcher activity resolution.'
 Assert-FileContains $adbSmokeTest 'ROM formats resolve-activity output differently' 'ADB smoke test must explain ROM-dependent resolve output failures.'
 

@@ -103,6 +103,19 @@ The app tries rule URLs in this order:
 
 Remote success updates the local cache. Remote failure uses the last valid cache. Remote failure with no valid cache does not open Doubao.
 
+## Remote Rule Update Procedure
+
+When Doubao changes shortcut or deep-link behavior:
+
+1. Re-check the working Doubao package, Activity, voice URI, and video URI.
+2. Edit `rules/doubao-call-rules.json`.
+3. Increment `ruleVersion`.
+4. Commit and push to GitHub.
+5. Confirm the raw GitHub URL in `rules/remote-rule-url.txt` returns the updated JSON.
+6. Confirm at least one accelerated URL returns the updated JSON.
+
+The installed APK does not need to be rebuilt for normal Doubao rule updates. Rebuild APKs only when framework code, permissions, package names, app icons, signing, or rule URL hosting changes.
+
 ## Optional ADB Smoke Test
 
 ```powershell
