@@ -43,9 +43,11 @@ $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.p
 $buildScript = Join-Path $Root 'build.ps1'
 $refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
 $ruleFile = Join-Path $Root 'rules/doubao-call-rules.json'
+$remoteRuleUrl = Join-Path $Root 'rules/remote-rule-url.txt'
 $verifyRules = Join-Path $Root 'tests/verify_rules.ps1'
 $adbSmokeTest = Join-Path $Root 'tests/smoke_adb.ps1'
 $gitignore = Join-Path $Root '.gitignore'
+$readme = Join-Path $Root 'README.md'
 $voiceAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x8bed)$([char]0x97f3)$([char]0x901a)$([char]0x8bdd)"
 $videoAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x89c6)$([char]0x9891)$([char]0x901a)$([char]0x8bdd)"
 
@@ -97,6 +99,7 @@ Assert-Exists $videoIconArt
 Assert-Exists $buildScript
 Assert-Exists $refactorPlan
 Assert-Exists $ruleFile
+Assert-Exists $remoteRuleUrl
 Assert-Exists $verifyRules
 Assert-Exists $adbSmokeTest
 Assert-FileContains $ruleFile '"schemaVersion": 1' 'Rule JSON must declare schemaVersion 1.'
@@ -105,6 +108,15 @@ Assert-FileContains $ruleFile '"doubaoPackage": "com.larus.nova"' 'Rule JSON mus
 Assert-FileContains $ruleFile '"voice"' 'Rule JSON must contain a voice entry.'
 Assert-FileContains $ruleFile '"video"' 'Rule JSON must contain a video entry.'
 Assert-FileContains $verifyRules 'Rule verification passed.' 'Rule verification script must check rule semantics.'
+$remoteRuleUrlContent = (Get-Content -Raw -Encoding ASCII $remoteRuleUrl).Trim()
+if ($remoteRuleUrlContent -notmatch '^https://raw\.githubusercontent\.com/.+/doubao-call-launchers/master/rules/doubao-call-rules\.json$') {
+    throw 'remote-rule-url.txt must contain the real public raw GitHub rule URL.'
+}
+if ($remoteRuleUrlContent.Contains('<') -or $remoteRuleUrlContent.Contains('>')) {
+    throw 'remote-rule-url.txt must not contain placeholders.'
+}
+Assert-FileContains $readme 'Remote Rule Hosting' 'README must document remote rule hosting.'
+Assert-FileContains $readme 'rules/remote-rule-url.txt' 'README must document the remote rule URL file.'
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
 Assert-FileContains $buildScript 'DOUBAO_KEYSTORE' 'Build script must support external keystore path.'

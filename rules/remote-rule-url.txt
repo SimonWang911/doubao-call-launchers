@@ -1,0 +1,1 @@
+https://raw.githubusercontent.com/SimonWang911/doubao-call-launchers/master/rules/doubao-call-rules.json

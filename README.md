@@ -84,6 +84,25 @@ Video:
 sslocal://flow/realtime_chat?is_from_outer=true&bot_id=7234781073513644036&open_method=shortcuts&open_vlm=1&sec_scene=shortcuts_video_call&enter_method=shortcuts
 ```
 
+## Remote Rule Hosting
+
+The installed APKs load Doubao entry data from the public raw GitHub URL recorded in `rules/remote-rule-url.txt`.
+
+Rule file:
+
+`rules/doubao-call-rules.json`
+
+Every rule update must increment `ruleVersion`. A lower `ruleVersion` must not overwrite a newer cached rule on phones.
+
+The app tries rule URLs in this order:
+
+1. `https://gh-proxy.com/` + raw URL
+2. raw URL
+3. `https://wget.la/` + raw URL
+4. `https://ghfast.top/` + raw URL
+
+Remote success updates the local cache. Remote failure uses the last valid cache. Remote failure with no valid cache does not open Doubao.
+
 ## Optional ADB Smoke Test
 
 ```powershell
