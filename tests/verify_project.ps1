@@ -32,6 +32,7 @@ function Assert-Exists {
 $voiceManifest = Join-Path $Root 'apps/voice/AndroidManifest.xml'
 $videoManifest = Join-Path $Root 'apps/video/AndroidManifest.xml'
 $launcherActivity = Join-Path $Root 'common/src/com/simon/doubaolauncher/CallLauncherActivity.java'
+$ruleUrlCandidates = Join-Path $Root 'common/src/com/simon/doubaolauncher/RuleUrlCandidates.java'
 $voiceStrings = Join-Path $Root 'apps/voice/res/values/strings.xml'
 $videoStrings = Join-Path $Root 'apps/video/res/values/strings.xml'
 $voiceIcon = Join-Path $Root 'apps/voice/res/mipmap-anydpi-v26/ic_launcher.xml'
@@ -104,6 +105,7 @@ Assert-Exists $ruleFile
 Assert-Exists $remoteRuleUrl
 Assert-Exists $verifyRules
 Assert-Exists $adbSmokeTest
+Assert-Exists $ruleUrlCandidates
 Assert-FileContains $ruleFile '"schemaVersion": 1' 'Rule JSON must declare schemaVersion 1.'
 Assert-FileContains $ruleFile '"ruleVersion": 1' 'Initial rule JSON must declare ruleVersion 1.'
 Assert-FileContains $ruleFile '"doubaoPackage": "com.larus.nova"' 'Rule JSON must target Doubao package only.'
@@ -119,6 +121,18 @@ if ($remoteRuleUrlContent.Contains('<') -or $remoteRuleUrlContent.Contains('>'))
 }
 Assert-FileContains $readme 'Remote Rule Hosting' 'README must document remote rule hosting.'
 Assert-FileContains $readme 'rules/remote-rule-url.txt' 'README must document the remote rule URL file.'
+Assert-FileContains $ruleUrlCandidates 'https://gh-proxy.com/' 'First rule URL candidate must use gh-proxy.com.'
+Assert-FileContains $ruleUrlCandidates 'https://wget.la/' 'Rule URL candidates must include wget.la.'
+Assert-FileContains $ruleUrlCandidates 'https://ghfast.top/' 'Rule URL candidates must include ghfast.top.'
+Assert-FileContains $ruleUrlCandidates 'appendTimestamp' 'Rule URL candidates must append a timestamp cache buster.'
+$ruleUrlContent = Get-Content -Raw -Encoding UTF8 $ruleUrlCandidates
+$ghProxyIndex = $ruleUrlContent.IndexOf('add(urls, GH_PROXY_PREFIX + cleanRawUrl, nowMillis)')
+$rawIndex = $ruleUrlContent.IndexOf('add(urls, cleanRawUrl, nowMillis)')
+$wgetIndex = $ruleUrlContent.IndexOf('add(urls, WGET_LA_PREFIX + cleanRawUrl, nowMillis)')
+$ghfastIndex = $ruleUrlContent.IndexOf('add(urls, GHFAST_TOP_PREFIX + cleanRawUrl, nowMillis)')
+if (-not ($ghProxyIndex -ge 0 -and $rawIndex -gt $ghProxyIndex -and $wgetIndex -gt $rawIndex -and $ghfastIndex -gt $wgetIndex)) {
+    throw 'Rule URL candidates must be ordered as gh-proxy, raw, wget.la, ghfast.top.'
+}
 Assert-FileContains $buildScript "Get-ChildItem `$Classes -Recurse -Filter '*.class'" 'Build script must pass every compiled class, including anonymous inner classes, to d8.'
 Assert-FileContains $buildScript "Get-ChildItem (Join-Path `$Root 'common\src') -Recurse -Filter '*.java'" 'Build script must compile all common Java sources.'
 Assert-FileContains $buildScript '--lib $AndroidJar' 'Build script must pass android.jar to d8 as a library to avoid platform-class warnings.'
