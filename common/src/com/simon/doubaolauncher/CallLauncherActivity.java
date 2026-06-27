@@ -110,11 +110,19 @@ public class CallLauncherActivity extends Activity {
         }
 
         AudioManager audioManager = (AudioManager) audioService;
-        maximizeStream(audioManager, AudioManager.STREAM_MUSIC, "music");
-        maximizeStream(audioManager, AudioManager.STREAM_VOICE_CALL, "voice_call");
+        maximizeMusicVolume(audioManager);
+        maximizeVoiceCallVolume(audioManager);
     }
 
-    private void maximizeStream(AudioManager audioManager, int streamType, String label) {
+    private void maximizeMusicVolume(AudioManager audioManager) {
+        unmuteAndMaximizeStream(audioManager, AudioManager.STREAM_MUSIC, "music");
+    }
+
+    private void maximizeVoiceCallVolume(AudioManager audioManager) {
+        unmuteAndMaximizeStream(audioManager, AudioManager.STREAM_VOICE_CALL, "voice_call");
+    }
+
+    private void unmuteAndMaximizeStream(AudioManager audioManager, int streamType, String label) {
         try {
             audioManager.adjustStreamVolume(streamType, AudioManager.ADJUST_UNMUTE, 0);
         } catch (SecurityException ex) {
