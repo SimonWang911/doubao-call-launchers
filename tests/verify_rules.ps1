@@ -28,9 +28,11 @@ def validate_rule(value):
         entry = value.get(mode)
         if not isinstance(entry, dict):
             raise AssertionError(f"{mode} entry is required")
-        uri = entry.get("uri", "")
-        if not uri.startswith("sslocal://"):
-            raise AssertionError(f"{mode} uri must start with sslocal://")
+        uri = str(entry.get("uri", "")).strip()
+        if not uri:
+            raise AssertionError(f"{mode} uri is required")
+        if ":" not in uri or uri.startswith(":"):
+            raise AssertionError(f"{mode} uri scheme is required")
     return True
 
 def candidate_urls(raw, now):
@@ -41,16 +43,28 @@ def candidate_urls(raw, now):
         f"https://ghfast.top/{raw}?t={now}",
     ]
 
-def select_rule(remote, cache):
-    if remote is not None:
-        validate_rule(remote)
-        if cache is not None and remote["ruleVersion"] < cache["ruleVersion"]:
-            return "cache", cache
-        return "remote", remote
+def should_overwrite_cache(remote, cache):
+    validate_rule(remote)
+    if cache is None:
+        return True
+    validate_rule(cache)
+    return remote["ruleVersion"] > cache["ruleVersion"]
+
+def foreground_choice(cache, remote_results_in_arrival_order):
     if cache is not None:
         validate_rule(cache)
+        for remote in remote_results_in_arrival_order:
+            if should_overwrite_cache(remote, cache):
+                return "remote", remote
         return "cache", cache
+
+    for remote in remote_results_in_arrival_order:
+        validate_rule(remote)
+        return "remote", remote
     return "failure", None
+
+def late_remote_refreshes_cache(remote, current_cache):
+    return should_overwrite_cache(remote, current_cache)
 
 validate_rule(rule)
 
@@ -63,30 +77,51 @@ except AssertionError as exc:
     if "doubaoPackage" not in str(exc):
         raise
 
-bad_uri = copy.deepcopy(rule)
-bad_uri["voice"]["uri"] = "https://example.com"
+bad_no_scheme = copy.deepcopy(rule)
+bad_no_scheme["voice"]["uri"] = "flow/realtime_chat?x=1"
 try:
-    validate_rule(bad_uri)
-    raise AssertionError("bad uri should fail")
+    validate_rule(bad_no_scheme)
+    raise AssertionError("missing scheme should fail")
 except AssertionError as exc:
-    if "voice uri" not in str(exc):
+    if "scheme" not in str(exc):
         raise
 
-newer_cache = copy.deepcopy(rule)
-newer_cache["ruleVersion"] = 3
-older_remote = copy.deepcopy(rule)
-older_remote["ruleVersion"] = 2
-source, selected = select_rule(older_remote, newer_cache)
+alternate_scheme = copy.deepcopy(rule)
+alternate_scheme["voice"]["uri"] = "doubao://voice-entry"
+validate_rule(alternate_scheme)
+
+cache_v3 = copy.deepcopy(rule)
+cache_v3["ruleVersion"] = 3
+remote_v2 = copy.deepcopy(rule)
+remote_v2["ruleVersion"] = 2
+remote_v3 = copy.deepcopy(rule)
+remote_v3["ruleVersion"] = 3
+remote_v4 = copy.deepcopy(rule)
+remote_v4["ruleVersion"] = 4
+remote_v5 = copy.deepcopy(rule)
+remote_v5["ruleVersion"] = 5
+
+assert should_overwrite_cache(remote_v4, cache_v3) is True
+assert should_overwrite_cache(remote_v3, cache_v3) is False
+assert should_overwrite_cache(remote_v2, cache_v3) is False
+assert should_overwrite_cache(remote_v2, None) is True
+
+source, selected = foreground_choice(cache_v3, [remote_v2, remote_v3])
 assert source == "cache"
 assert selected["ruleVersion"] == 3
 
-source, selected = select_rule(rule, None)
+source, selected = foreground_choice(cache_v3, [remote_v4, remote_v5])
 assert source == "remote"
+assert selected["ruleVersion"] == 4
 
-source, selected = select_rule(None, rule)
-assert source == "cache"
+assert late_remote_refreshes_cache(remote_v5, remote_v4) is True
+assert late_remote_refreshes_cache(remote_v3, remote_v4) is False
 
-source, selected = select_rule(None, None)
+source, selected = foreground_choice(None, [remote_v2])
+assert source == "remote"
+assert selected["ruleVersion"] == 2
+
+source, selected = foreground_choice(None, [])
 assert source == "failure"
 assert selected is None
 

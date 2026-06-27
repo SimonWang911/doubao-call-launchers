@@ -29,6 +29,7 @@
 - Late remote results after cache launch must be allowed to refresh cache, but must never launch Doubao again in the same app invocation.
 - Lower or equal remote `ruleVersion` must not overwrite a cached rule.
 - Higher remote `ruleVersion` may overwrite cache after validation.
+- Cache writes must synchronize the whole read-current-cache-version and commit sequence, so concurrent late remote results cannot write an older rule after a newer rule.
 - Version release target for this refactor: `versionCode=3`, `versionName=1.1.1`, tag/release `v1.1.1`.
 
 ## Target State Machine
@@ -61,13 +62,14 @@ If cache does not exist:
   - Keep schema, rule version, fixed Doubao package, non-empty activity, non-empty mode URIs, and non-empty URI scheme validation.
   - Remove business-route validation such as fixed `sslocal://`.
 - Modify: `common/src/com/simon/doubaolauncher/RuleCache.java`
-  - Add a version-aware cache write method that rereads current cache before overwriting.
+  - Add a synchronized version-aware cache write method that rereads current cache before overwriting.
 - Modify: `common/src/com/simon/doubaolauncher/RuleFetchResult.java`
   - Add enough source/status information for cache launch, remote launch, and failure.
 - Modify: `common/src/com/simon/doubaolauncher/RuleRepository.java`
   - Replace serial URL loop with concurrent request coordination.
   - Implement 2 second cached foreground wait and 10 second no-cache wait.
   - Keep late remote refresh for cache only.
+  - Close the timeout race by making `markForegroundDecisionMade()` also cache any `bestRemote` that arrived just before cache launch/failure.
 - Modify: `common/src/com/simon/doubaolauncher/CallLauncherActivity.java`
   - Keep one foreground launch decision per Activity instance.
   - Use application context for repository work.
@@ -150,24 +152,21 @@ def should_overwrite_cache(remote, cache):
     validate_rule(cache)
     return remote["ruleVersion"] > cache["ruleVersion"]
 
-def foreground_choice(cache, remote_results_within_wait):
+def foreground_choice(cache, remote_results_in_arrival_order):
     if cache is not None:
         validate_rule(cache)
-        newer = [
-            remote for remote in remote_results_within_wait
-            if should_overwrite_cache(remote, cache)
-        ]
-        if newer:
-            return "remote", sorted(newer, key=lambda item: item["ruleVersion"], reverse=True)[0]
+        for remote in remote_results_in_arrival_order:
+            if should_overwrite_cache(remote, cache):
+                return "remote", remote
         return "cache", cache
 
-    valid = []
-    for remote in remote_results_within_wait:
+    for remote in remote_results_in_arrival_order:
         validate_rule(remote)
-        valid.append(remote)
-    if valid:
-        return "remote", valid[0]
+        return "remote", remote
     return "failure", None
+
+def late_remote_refreshes_cache(remote, current_cache):
+    return should_overwrite_cache(remote, current_cache)
 ```
 
 Add these assertions:
@@ -181,6 +180,8 @@ remote_v3 = copy.deepcopy(rule)
 remote_v3["ruleVersion"] = 3
 remote_v4 = copy.deepcopy(rule)
 remote_v4["ruleVersion"] = 4
+remote_v5 = copy.deepcopy(rule)
+remote_v5["ruleVersion"] = 5
 
 assert should_overwrite_cache(remote_v4, cache_v3) is True
 assert should_overwrite_cache(remote_v3, cache_v3) is False
@@ -195,10 +196,19 @@ source, selected = foreground_choice(cache_v3, [remote_v4])
 assert source == "remote"
 assert selected["ruleVersion"] == 4
 
+source, selected = foreground_choice(cache_v3, [remote_v4, remote_v5])
+assert source == "remote"
+assert selected["ruleVersion"] == 4
+
+assert late_remote_refreshes_cache(remote_v5, remote_v4) is True
+assert late_remote_refreshes_cache(remote_v3, remote_v4) is False
+
 source, selected = foreground_choice(None, [remote_v2])
 assert source == "remote"
 assert selected["ruleVersion"] == 2
 ```
+
+This intentionally models foreground behavior as first valid higher-version remote in arrival order, not highest `ruleVersion` among all in-window responses. A later higher version should refresh cache only.
 
 - [ ] **Step 3: Update structural checks in `tests/verify_project.ps1`**
 
@@ -220,11 +230,24 @@ Add repository/cache checks:
 
 ```powershell
 Assert-FileContains $ruleCache 'saveIfNewer' 'Rule cache must prevent equal or lower ruleVersion overwrites.'
+Assert-FileContains $ruleCache 'synchronized boolean saveIfNewer' 'Rule cache must synchronize version-aware writes.'
+Assert-FileContains $ruleCache 'rule.ruleVersion <= cached.ruleVersion' 'Rule cache must reject equal or lower ruleVersion overwrites.'
 Assert-FileContains $ruleRepository 'CACHE_FOREGROUND_WAIT_MILLIS = 2000' 'Rule repository must use a 2 second foreground wait when cache exists.'
 Assert-FileContains $ruleRepository 'NO_CACHE_WAIT_MILLIS = 10000' 'Rule repository must wait up to 10 seconds when no cache exists.'
 Assert-FileContains $ruleRepository 'RuleRequestCoordinator' 'Rule repository must coordinate concurrent remote rule requests.'
+Assert-FileContains $ruleRepository 'startRequest' 'Rule repository must start concurrent per-candidate requests.'
+Assert-FileContains $ruleRepository 'awaitRemoteLaunchResult' 'Rule repository must await a bounded remote launch decision.'
+Assert-FileContains $ruleRepository 'markForegroundDecisionMade' 'Rule repository must mark cache/failure foreground decisions.'
 Assert-FileContains $ruleRepository 'launchDecisionMade' 'Rule repository must prevent duplicate foreground decisions.'
 Assert-FileContains $ruleRepository 'refreshCacheOnly' 'Late remote rules must refresh cache only after cache launch or failure.'
+Assert-FileContains $ruleRepository 'cache.saveIfNewer' 'Rule repository must save remote rules through version-aware cache writes.'
+```
+
+Remove these old repository expectations from `tests/verify_project.ps1` because they describe the serial implementation:
+
+```powershell
+Assert-FileContains $ruleRepository 'remoteRule.ruleVersion < cached.ruleVersion' 'Rule repository must reject older remote rules.'
+Assert-FileContains $ruleRepository 'cache.save(remoteRule)' 'Rule repository must save valid remote rules.'
 ```
 
 Update manifest version checks:
@@ -332,10 +355,10 @@ git commit -m "refactor: relax rule URI validation"
 
 - [ ] **Step 1: Keep current `save` compatibility briefly**
 
-Add a version-aware method while keeping `save` available until the repository is refactored:
+Add a synchronized version-aware method while keeping `save` available until the repository is refactored. The `synchronized` keyword is required because concurrent late remote results can otherwise read the same old cache and commit out of order.
 
 ```java
-boolean saveIfNewer(DoubaoRule rule) {
+synchronized boolean saveIfNewer(DoubaoRule rule) {
     if (rule == null || rule.sourceJson == null || rule.sourceJson.trim().length() == 0) {
         return false;
     }
@@ -574,6 +597,9 @@ private final class RuleRequestCoordinator {
 
     synchronized void markForegroundDecisionMade() {
         launchDecisionMade = true;
+        if (bestRemote != null) {
+            refreshCacheOnly(bestRemote);
+        }
     }
 
     private void refreshCacheOnly(DoubaoRule remoteRule) {
@@ -590,7 +616,7 @@ private final class RuleRequestCoordinator {
 }
 ```
 
-Do not access `launchDecisionMade` directly outside synchronized methods. Use `markForegroundDecisionMade()` whenever the foreground decision becomes cache launch or failure. Late remote rules may call `refreshCacheOnly(remoteRule)` through `acceptRemote`, but must never trigger a second `RuleFetchResult.fromRemote` after cache launch/failure.
+Do not access `launchDecisionMade` directly outside synchronized methods. Use `markForegroundDecisionMade()` whenever the foreground decision becomes cache launch or failure. `markForegroundDecisionMade()` must refresh cache with any `bestRemote` that arrived between the foreground wait timeout and the cache/failure decision. Late remote rules may call `refreshCacheOnly(remoteRule)` through `acceptRemote`, but must never trigger a second `RuleFetchResult.fromRemote` after cache launch/failure.
 
 - [ ] **Step 6: Recheck no-cache and cache wait math**
 
@@ -875,7 +901,9 @@ Use this checklist before starting code changes:
 - The parser is intentionally structural and does not re-hardcode Doubao route details.
 - `doubaoPackage == com.larus.nova` remains fixed.
 - Concurrent remote requests cannot overwrite a newer cache with an equal or lower version.
+- `saveIfNewer` synchronizes read-current-cache and commit as one critical section.
 - Late remote results can refresh cache after cache launch, but cannot cause another foreground launch.
+- A remote rule arriving between the 2 second timeout and cache launch is still saved by `markForegroundDecisionMade()`.
 - Cached foreground wait is 2 seconds.
 - No-cache foreground wait is 10 seconds total, not 10 seconds per URL and not two sequential 10 second waits.
 - Activity destruction blocks UI/TTS/startActivity, while application-context cache refresh remains safe.
@@ -898,6 +926,7 @@ Non-negotiable requirements:
 - With valid cache, wait up to 2 seconds for a higher-version remote rule, otherwise launch with cache.
 - Without valid cache, wait up to 10 seconds total for a valid remote rule before failure.
 - Late remote results may update cache only and must never trigger a second Doubao launch.
+- If a higher-version remote arrives after the 2 second foreground wait but before cache launch is marked, save it to cache only.
 - Equal or lower ruleVersion must not overwrite cache.
 - Bump APK version to versionCode 3 / versionName 1.1.1.
 

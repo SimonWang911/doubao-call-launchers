@@ -50,6 +50,7 @@ $voiceIconArt = Join-Path $Root 'apps/voice/res/drawable-nodpi/ic_launcher_art.p
 $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.png'
 $buildScript = Join-Path $Root 'build.ps1'
 $refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
+$concurrentRulePlan = Join-Path $Root 'docs/superpowers/plans/2026-06-28-concurrent-rule-refresh-plan.md'
 $ruleFile = Join-Path $Root 'rules/doubao-call-rules.json'
 $remoteRuleUrl = Join-Path $Root 'rules/remote-rule-url.txt'
 $verifyRules = Join-Path $Root 'tests/verify_rules.ps1'
@@ -61,10 +62,10 @@ $videoAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x89c6)$([char]0x9891)$([
 
 Assert-FileContains $voiceManifest 'package="com.simon.doubao.voicecall"' 'Voice manifest must use the voice package name.'
 Assert-FileContains $videoManifest 'package="com.simon.doubao.videocall"' 'Video manifest must use the video package name.'
-Assert-FileContains $voiceManifest 'android:versionCode="2"' 'Voice APK must declare versionCode 2.'
-Assert-FileContains $voiceManifest 'android:versionName="1.1.0"' 'Voice APK must declare versionName 1.1.0.'
-Assert-FileContains $videoManifest 'android:versionCode="2"' 'Video APK must declare versionCode 2.'
-Assert-FileContains $videoManifest 'android:versionName="1.1.0"' 'Video APK must declare versionName 1.1.0.'
+Assert-FileContains $voiceManifest 'android:versionCode="3"' 'Voice APK must declare versionCode 3.'
+Assert-FileContains $voiceManifest 'android:versionName="1.1.1"' 'Voice APK must declare versionName 1.1.1.'
+Assert-FileContains $videoManifest 'android:versionCode="3"' 'Video APK must declare versionCode 3.'
+Assert-FileContains $videoManifest 'android:versionName="1.1.1"' 'Video APK must declare versionName 1.1.1.'
 Assert-FileContains $voiceStrings "<string name=`"app_name`">$voiceAppName</string>" 'Voice app name must be exact.'
 Assert-FileContains $videoStrings "<string name=`"app_name`">$videoAppName</string>" 'Video app name must be exact.'
 Assert-FileContains $voiceManifest 'com.simon.doubaolauncher.MODE' 'Voice manifest must pass a launch mode.'
@@ -108,6 +109,7 @@ Assert-Exists $voiceIconArt
 Assert-Exists $videoIconArt
 Assert-Exists $buildScript
 Assert-Exists $refactorPlan
+Assert-Exists $concurrentRulePlan
 Assert-Exists $ruleFile
 Assert-Exists $remoteRuleUrl
 Assert-Exists $verifyRules
@@ -135,6 +137,9 @@ if ($remoteRuleUrlContent.Contains('<') -or $remoteRuleUrlContent.Contains('>'))
 }
 Assert-FileContains $readme 'Remote Rule Hosting' 'README must document remote rule hosting.'
 Assert-FileContains $readme 'rules/remote-rule-url.txt' 'README must document the remote rule URL file.'
+Assert-FileContains $readme 'concurrently' 'README must document concurrent rule fetching.'
+Assert-FileContains $readme '2 seconds' 'README must document the cached foreground wait.'
+Assert-FileContains $readme '10 seconds' 'README must document the no-cache remote wait.'
 Assert-FileContains $ruleUrlCandidates 'https://gh-proxy.com/' 'First rule URL candidate must use gh-proxy.com.'
 Assert-FileContains $ruleUrlCandidates 'https://wget.la/' 'Rule URL candidates must include wget.la.'
 Assert-FileContains $ruleUrlCandidates 'https://ghfast.top/' 'Rule URL candidates must include ghfast.top.'
@@ -149,19 +154,30 @@ if (-not ($ghProxyIndex -ge 0 -and $rawIndex -gt $ghProxyIndex -and $wgetIndex -
 }
 Assert-FileContains $doubaoRuleParser 'SUPPORTED_SCHEMA_VERSION = 1' 'Rule parser must declare supported schema version.'
 Assert-FileContains $doubaoRuleParser 'ALLOWED_DOUBAO_PACKAGE = "com.larus.nova"' 'Rule parser must restrict Doubao package.'
-Assert-FileContains $doubaoRuleParser 'sslocal://' 'Rule parser must restrict call URI scheme.'
+Assert-FileContains $doubaoRuleParser 'Uri.parse' 'Rule parser must parse rule URIs with Android Uri.'
+Assert-FileContains $doubaoRuleParser 'getScheme()' 'Rule parser must require a non-empty URI scheme.'
 Assert-FileContains $doubaoRuleParser 'ruleVersion' 'Rule parser must validate ruleVersion.'
 Assert-FileContains $ruleCache 'SharedPreferences' 'Rule cache must use SharedPreferences.'
 Assert-FileContains $ruleCache 'KEY_RULE_JSON' 'Rule cache must store the last valid JSON.'
 Assert-FileContains $ruleCache 'commit()' 'Rule cache must use deterministic commit writes.'
-Assert-FileContains $ruleCache 'save(DoubaoRule rule)' 'Rule cache must save validated rules only.'
+Assert-FileContains $ruleCache 'synchronized boolean saveIfNewer' 'Rule cache must synchronize version-aware writes.'
+Assert-FileContains $ruleCache 'rule.ruleVersion <= cached.ruleVersion' 'Rule cache must reject equal or lower ruleVersion overwrites.'
 Assert-FileContains $ruleCache 'load()' 'Rule cache must load cached rules.'
 Assert-FileContains $ruleRepository 'HttpURLConnection' 'Rule repository must fetch remote rules with HttpURLConnection.'
 Assert-FileContains $ruleRepository 'setConnectTimeout' 'Rule repository must use a connect timeout.'
 Assert-FileContains $ruleRepository 'setReadTimeout' 'Rule repository must use a read timeout.'
 Assert-FileContains $ruleRepository 'RuleUrlCandidates.build' 'Rule repository must use ordered URL candidates.'
-Assert-FileContains $ruleRepository 'remoteRule.ruleVersion < cached.ruleVersion' 'Rule repository must reject older remote rules.'
-Assert-FileContains $ruleRepository 'cache.save(remoteRule)' 'Rule repository must save valid remote rules.'
+Assert-FileContains $ruleRepository 'CONNECT_TIMEOUT_MILLIS = 2000' 'Rule repository must use 2 second connect timeouts.'
+Assert-FileContains $ruleRepository 'READ_TIMEOUT_MILLIS = 2000' 'Rule repository must use 2 second read timeouts.'
+Assert-FileContains $ruleRepository 'CACHE_FOREGROUND_WAIT_MILLIS = 2000' 'Rule repository must use a 2 second foreground wait when cache exists.'
+Assert-FileContains $ruleRepository 'NO_CACHE_WAIT_MILLIS = 10000' 'Rule repository must wait up to 10 seconds when no cache exists.'
+Assert-FileContains $ruleRepository 'RuleRequestCoordinator' 'Rule repository must coordinate concurrent remote rule requests.'
+Assert-FileContains $ruleRepository 'startRequest' 'Rule repository must start concurrent per-candidate requests.'
+Assert-FileContains $ruleRepository 'awaitRemoteLaunchResult' 'Rule repository must await a bounded remote launch decision.'
+Assert-FileContains $ruleRepository 'markForegroundDecisionMade' 'Rule repository must mark cache/failure foreground decisions.'
+Assert-FileContains $ruleRepository 'launchDecisionMade' 'Rule repository must prevent duplicate foreground decisions.'
+Assert-FileContains $ruleRepository 'refreshCacheOnly' 'Late remote rules must refresh cache only after cache launch or failure.'
+Assert-FileContains $ruleRepository 'cache.saveIfNewer' 'Rule repository must save remote rules through version-aware cache writes.'
 Assert-FileContains $ruleRepository 'RuleFetchResult.fromCache' 'Rule repository must fall back to valid cache.'
 Assert-FileContains $ruleRepository 'raw.githubusercontent.com' 'Rule repository must contain the public raw GitHub rule URL.'
 $ruleRepositoryContent = Get-Content -Raw -Encoding UTF8 $ruleRepository
@@ -192,6 +208,11 @@ Assert-FileContains $refactorPlan 'Remove the immediately following standalone `
 Assert-FileContains $refactorPlan 'versionCode must only go up' 'Refactor plan must document monotonic versionCode upgrades.'
 Assert-FileContains $refactorPlan 'ROM formats resolve-activity output differently' 'Refactor plan must document ROM-dependent ADB smoke-test output risk.'
 Assert-FileContains $refactorPlan 'structural/configuration guard' 'Refactor plan must state static checks are not full behavior tests.'
+Assert-FileContains $concurrentRulePlan 'synchronized boolean saveIfNewer' 'Concurrent rule plan must require synchronized cache writes.'
+Assert-FileContains $concurrentRulePlan 'markForegroundDecisionMade' 'Concurrent rule plan must close the timeout race before cache launch/failure.'
+Assert-FileContains $concurrentRulePlan '2 seconds' 'Concurrent rule plan must document cached 2 second foreground wait.'
+Assert-FileContains $concurrentRulePlan '10 seconds' 'Concurrent rule plan must document no-cache 10 second wait.'
+Assert-FileContains $concurrentRulePlan 'first valid higher-version remote' 'Concurrent rule plan must preserve fastest valid higher-version foreground behavior.'
 Assert-FileContains $adbSmokeTest 'LaunchVoice' 'ADB smoke test must require an explicit opt-in to launch voice.'
 Assert-FileContains $adbSmokeTest 'LaunchVideo' 'ADB smoke test must require an explicit opt-in to launch video.'
 Assert-FileContains $adbSmokeTest 'MODIFY_AUDIO_SETTINGS' 'ADB smoke test must verify audio settings permission.'
