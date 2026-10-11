@@ -1,7 +1,17 @@
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
+$SdkCandidates = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME)
+if ($env:LOCALAPPDATA) {
+    $SdkCandidates += Join-Path $env:LOCALAPPDATA 'Android\Sdk'
+}
+$Sdk = $SdkCandidates |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+    Select-Object -First 1
+if (-not $Sdk) {
+    throw 'Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME, or install it under LOCALAPPDATA\Android\Sdk.'
+}
+$Sdk = (Resolve-Path -LiteralPath $Sdk).Path
 $BuildTools = (Get-ChildItem (Join-Path $Sdk 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
 $Platform = (Get-ChildItem (Join-Path $Sdk 'platforms') -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
 $AndroidJar = Join-Path $Platform 'android.jar'
@@ -19,21 +29,8 @@ $OutDir = Join-Path $Root 'dist'
 New-Item -ItemType Directory -Force (Join-Path $Root 'build') | Out-Null
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
-if (-not (Test-Path $KeyStore)) {
-    if ($env:DOUBAO_KEYSTORE) {
-        throw "Specified DOUBAO_KEYSTORE does not exist: $KeyStore"
-    }
-
-    Write-Warning "Generating a local debug keystore. Keep this file if you need future overwrite installs."
-    keytool -genkeypair `
-        -keystore $KeyStore `
-        -storepass $KeyStorePass `
-        -keypass $KeyPass `
-        -alias $KeyAlias `
-        -keyalg RSA `
-        -keysize 2048 `
-        -validity 10000 `
-        -dname "CN=Doubao Call Launcher,O=Local,C=CN" | Out-Null
+if (-not (Test-Path -LiteralPath $KeyStore)) {
+    throw "Signing keystore is required but was not found: $KeyStore. Restore the original keystore before building."
 }
 
 function Build-App {

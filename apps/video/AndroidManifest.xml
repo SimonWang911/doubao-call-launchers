@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.simon.doubao.videocall"
-    android:versionCode="3"
-    android:versionName="1.1.1">
+    android:versionCode="5"
+    android:versionName="1.2.0">
 
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <package android:name="com.larus.nova" />
@@ -31,5 +35,14 @@
                 android:name="com.simon.doubaolauncher.MODE"
                 android:value="video" />
         </activity>
+        <service
+            android:name="com.simon.doubaolauncher.TouchShieldService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="full-screen touch shield for protected video call" />
+        </service>
     </application>
 </manifest>

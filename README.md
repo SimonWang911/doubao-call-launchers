@@ -2,8 +2,8 @@
 
 Two small Android launcher APKs for opening Doubao voice and video calls directly:
 
-- `豆包语音通话`
-- `豆包视频通话`
+- `AI语音`
+- `AI视频`
 
 The apps are intended for elderly or visually impaired users who can ask the phone voice assistant to open one of the launcher apps. Each app immediately routes into the corresponding Doubao call deep link.
 
@@ -12,7 +12,7 @@ The apps are intended for elderly or visually impaired users who can ask the pho
 The project deliberately avoids settings screens, accessibility services, and manual in-app choices. The normal flow is:
 
 1. A family member installs and configures the phone once.
-2. The elderly user asks the phone voice assistant to open `豆包语音通话` or `豆包视频通话`.
+2. The elderly user asks the phone voice assistant to open `AI语音` or `AI视频`.
 3. The launcher app maximizes audible volume and opens the matching Doubao call entry.
 
 ## Project Layout
@@ -28,8 +28,8 @@ The project deliberately avoids settings screens, accessibility services, and ma
 This project uses the local Android SDK command-line tools directly, without Gradle.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\verify_project.ps1
-powershell -ExecutionPolicy Bypass -File .\build.ps1
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\tests\verify_project.ps1
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
 Output APKs are written to `dist/`.
@@ -43,7 +43,7 @@ adb install -r .\dist\doubao-video-call.apk
 
 ## Signing
 
-The default build uses `build\doubao-launchers-debug.keystore`. This file is ignored by Git. Keep a backup if you need future overwrite installs on the same phone.
+The default build requires `build\doubao-launchers-debug.keystore`. This file is ignored by Git. Keep a backup if you need future overwrite installs on the same phone. If the keystore is missing, the build fails and does not generate a replacement signing key.
 
 For a fixed keystore, set these environment variables before running `build.ps1`:
 
@@ -54,7 +54,7 @@ $env:DOUBAO_KEYSTORE_PASS='...'
 $env:DOUBAO_KEY_PASS='...'
 ```
 
-If the keystore is lost, a newly signed APK with the same package name cannot overwrite the old installation. Uninstall/reinstall would be required.
+If the keystore is lost, a newly signed APK with the same package name cannot overwrite the old installation. Restore the original keystore; uninstall/reinstall would otherwise be required.
 
 ## Versioning
 
@@ -65,6 +65,19 @@ Increase `android:versionCode` before distributing an update. `android:versionCo
 On every launch, the app intentionally maximizes media volume and tries to maximize voice-call volume. It also tries to unmute those streams. This is by design to protect elderly users from accidentally muted or very low volume.
 
 Volume changes affect the corresponding Android audio streams globally, not only Doubao.
+
+## Video Touch Shield
+
+`AI视频` uses a transparent, touch-consuming foreground overlay so accidental touches do not press controls in the Doubao video call. The overlay is created before the Doubao video intent is dispatched and remains after the launcher Activity exits.
+
+Before first use, a family member must grant `AI视频`:
+
+1. Display over other apps permission.
+2. Notification permission, with the `AI视频` touch-shield notification channel enabled.
+
+If either permission is missing or the shield cannot be mounted, the app fails closed and does not open an unprotected video call. The foreground notification contains `解除遮罩` for a family member. Stopping the service removes the overlay and restores normal touch input.
+
+The shield covers application content only. Android system actions such as Home, system Back gestures, and the notification shade are outside the control of a normal APK. `AI语音` does not request overlay or foreground-service permissions and does not use the shield.
 
 ## Doubao Entry Maintenance
 
@@ -86,7 +99,7 @@ sslocal://flow/realtime_chat?is_from_outer=true&bot_id=7234781073513644036&open_
 
 ## Remote Rule Hosting
 
-The installed APKs load Doubao entry data from the public raw GitHub URL recorded in `rules/remote-rule-url.txt`.
+The installed APKs load Doubao entry data from the fixed public raw GitHub URL built into `RuleRepository.java`. `rules/remote-rule-url.txt` is an audit record used by humans and verification scripts; the installed APK does not read this file at runtime.
 
 Rule file:
 
@@ -123,11 +136,11 @@ The installed APK does not need to be rebuilt for normal Doubao rule updates. Re
 ## Optional ADB Smoke Test
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\smoke_adb.ps1 -DeviceId 304b77ee
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\tests\smoke_adb.ps1
 ```
 
 The smoke test checks device state, package installation, audio settings permission, and launcher resolution. It does not launch the apps unless `-LaunchVoice` or `-LaunchVideo` is explicitly passed.
 
 ## Test Scope
 
-`tests\verify_project.ps1` is a structural/configuration guard. It verifies important code and manifest markers but does not prove TTS timing, actual system volume changes, or Doubao deep-link behavior on every ROM. Those behaviors require the build, optional ADB smoke test, and targeted manual launch checks when needed.
+`tests\verify_project.ps1` is a structural/configuration guard and includes the touch-shield contract gate. It verifies important code and manifest markers but does not prove TTS timing, actual system volume changes, overlay touch interception, foreground-service survival, or Doubao deep-link behavior on every ROM. Those behaviors require the build, optional ADB smoke test, and targeted manual launch checks when needed.

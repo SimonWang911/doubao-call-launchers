@@ -49,23 +49,25 @@ $videoRoundIcon = Join-Path $Root 'apps/video/res/mipmap-anydpi-v26/ic_launcher_
 $voiceIconArt = Join-Path $Root 'apps/voice/res/drawable-nodpi/ic_launcher_art.png'
 $videoIconArt = Join-Path $Root 'apps/video/res/drawable-nodpi/ic_launcher_art.png'
 $buildScript = Join-Path $Root 'build.ps1'
-$refactorPlan = Join-Path $Root 'docs/superpowers/plans/2026-06-27-refactor-maintenance-plan.md'
-$concurrentRulePlan = Join-Path $Root 'docs/superpowers/plans/2026-06-28-concurrent-rule-refresh-plan.md'
+$refactorPlan = Join-Path $Root 'docs/refactor/2026-10-11-architecture-maintenance-refactor-plan.md'
+$refactorReview = Join-Path $Root 'docs/refactor/2026-10-11-architecture-maintenance-plan-review.md'
 $ruleFile = Join-Path $Root 'rules/doubao-call-rules.json'
 $remoteRuleUrl = Join-Path $Root 'rules/remote-rule-url.txt'
 $verifyRules = Join-Path $Root 'tests/verify_rules.ps1'
+$verifyRefactor = Join-Path $Root 'tests/verify_refactor.ps1'
+$verifyTouchShield = Join-Path $Root 'tests/verify_touch_shield.ps1'
 $adbSmokeTest = Join-Path $Root 'tests/smoke_adb.ps1'
 $gitignore = Join-Path $Root '.gitignore'
 $readme = Join-Path $Root 'README.md'
-$voiceAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x8bed)$([char]0x97f3)$([char]0x901a)$([char]0x8bdd)"
-$videoAppName = "$([char]0x8c46)$([char]0x5305)$([char]0x89c6)$([char]0x9891)$([char]0x901a)$([char]0x8bdd)"
+$voiceAppName = 'AI语音'
+$videoAppName = 'AI视频'
 
 Assert-FileContains $voiceManifest 'package="com.simon.doubao.voicecall"' 'Voice manifest must use the voice package name.'
 Assert-FileContains $videoManifest 'package="com.simon.doubao.videocall"' 'Video manifest must use the video package name.'
-Assert-FileContains $voiceManifest 'android:versionCode="3"' 'Voice APK must declare versionCode 3.'
-Assert-FileContains $voiceManifest 'android:versionName="1.1.1"' 'Voice APK must declare versionName 1.1.1.'
-Assert-FileContains $videoManifest 'android:versionCode="3"' 'Video APK must declare versionCode 3.'
-Assert-FileContains $videoManifest 'android:versionName="1.1.1"' 'Video APK must declare versionName 1.1.1.'
+Assert-FileContains $voiceManifest 'android:versionCode="5"' 'Voice APK must declare versionCode 5.'
+Assert-FileContains $voiceManifest 'android:versionName="1.2.0"' 'Voice APK must declare versionName 1.2.0.'
+Assert-FileContains $videoManifest 'android:versionCode="5"' 'Video APK must declare versionCode 5.'
+Assert-FileContains $videoManifest 'android:versionName="1.2.0"' 'Video APK must declare versionName 1.2.0.'
 Assert-FileContains $voiceStrings "<string name=`"app_name`">$voiceAppName</string>" 'Voice app name must be exact.'
 Assert-FileContains $videoStrings "<string name=`"app_name`">$videoAppName</string>" 'Video app name must be exact.'
 Assert-FileContains $voiceManifest 'com.simon.doubaolauncher.MODE' 'Voice manifest must pass a launch mode.'
@@ -86,8 +88,8 @@ Assert-FileContains $launcherActivity 'ADJUST_UNMUTE' 'Launcher must try to unmu
 Assert-FileContains $launcherActivity 'maximizeMusicVolume' 'Launcher must keep explicit media-volume maximization.'
 Assert-FileContains $launcherActivity 'maximizeVoiceCallVolume' 'Launcher must keep explicit voice-call volume maximization.'
 Assert-FileContains $launcherActivity 'unmuteAndMaximizeStream' 'Launcher must centralize stream unmute and maximize logic.'
-Assert-FileContains $launcherActivity 'VOLUME_READY_MESSAGE' 'Launcher must speak a clear volume status prompt.'
-Assert-FileContains $launcherActivity 'AUTHORIZATION_HELP_MESSAGE' 'Launcher must explain the first-run system authorization prompt.'
+Assert-FileContains $launcherActivity '\u6b63\u5728\u542f\u52a8\u8c46\u5305\u8bed\u97f3' 'Launcher must use the short voice opening prompt.'
+Assert-FileContains $launcherActivity '\u6b63\u5728\u542f\u52a8\u8c46\u5305\u89c6\u9891' 'Launcher must use the short video opening prompt.'
 Assert-FileContains $launcherActivity 'UtteranceProgressListener' 'Launcher must wait for or observe TTS completion.'
 Assert-FileContains $launcherActivity 'shutdownTts' 'Launcher must centralize TextToSpeech shutdown.'
 Assert-FileContains $launcherActivity 'onDestroy' 'Launcher must release TextToSpeech from onDestroy.'
@@ -109,10 +111,12 @@ Assert-Exists $voiceIconArt
 Assert-Exists $videoIconArt
 Assert-Exists $buildScript
 Assert-Exists $refactorPlan
-Assert-Exists $concurrentRulePlan
+Assert-Exists $refactorReview
 Assert-Exists $ruleFile
 Assert-Exists $remoteRuleUrl
 Assert-Exists $verifyRules
+Assert-Exists $verifyRefactor
+Assert-Exists $verifyTouchShield
 Assert-Exists $adbSmokeTest
 Assert-Exists $ruleUrlCandidates
 Assert-Exists $callEntry
@@ -165,7 +169,8 @@ if ($doubaoRuleParserContent.Contains('optInt(')) {
 Assert-FileContains $ruleCache 'SharedPreferences' 'Rule cache must use SharedPreferences.'
 Assert-FileContains $ruleCache 'KEY_RULE_JSON' 'Rule cache must store the last valid JSON.'
 Assert-FileContains $ruleCache 'commit()' 'Rule cache must use deterministic commit writes.'
-Assert-FileContains $ruleCache 'synchronized boolean saveIfNewer' 'Rule cache must synchronize version-aware writes.'
+Assert-FileContains $ruleCache 'private static final Object CACHE_WRITE_LOCK' 'Rule cache must declare a process-wide cache write lock.'
+Assert-FileContains $ruleCache 'synchronized (CACHE_WRITE_LOCK)' 'Rule cache must synchronize version-aware writes with the shared lock.'
 Assert-FileContains $ruleCache 'rule.ruleVersion <= cached.ruleVersion' 'Rule cache must reject equal or lower ruleVersion overwrites.'
 Assert-FileContains $ruleCache 'load()' 'Rule cache must load cached rules.'
 Assert-FileContains $ruleRepository 'HttpURLConnection' 'Rule repository must fetch remote rules with HttpURLConnection.'
@@ -205,19 +210,13 @@ Assert-FileContains $buildScript 'DOUBAO_KEY_ALIAS' 'Build script must support e
 Assert-FileContains $buildScript 'DOUBAO_KEYSTORE_PASS' 'Build script must support external keystore password.'
 Assert-FileContains $buildScript 'DOUBAO_KEY_PASS' 'Build script must support external key password.'
 Assert-FileContains $gitignore '*.keystore' 'Git ignore rules must keep keystores out of source control.'
-Assert-FileContains $refactorPlan 'armTtsTimeout' 'Refactor plan must separate TTS timeout arming from finish requests.'
-Assert-FileContains $refactorPlan 'finishSoon' 'Refactor plan must finish soon after TTS completion or failure.'
-Assert-FileContains $refactorPlan 'cancelTimeoutFinish' 'Refactor plan must cancel timeout callbacks when TTS finishes first.'
-Assert-FileContains $refactorPlan 'finishRequested' 'Refactor plan must track finish requests separately from timeout arming.'
-Assert-FileContains $refactorPlan 'Remove the immediately following standalone `finishAfterDelay();`' 'Refactor plan must explicitly remove duplicate post-TTS finish calls.'
-Assert-FileContains $refactorPlan 'versionCode must only go up' 'Refactor plan must document monotonic versionCode upgrades.'
-Assert-FileContains $refactorPlan 'ROM formats resolve-activity output differently' 'Refactor plan must document ROM-dependent ADB smoke-test output risk.'
-Assert-FileContains $refactorPlan 'structural/configuration guard' 'Refactor plan must state static checks are not full behavior tests.'
-Assert-FileContains $concurrentRulePlan 'synchronized boolean saveIfNewer' 'Concurrent rule plan must require synchronized cache writes.'
-Assert-FileContains $concurrentRulePlan 'markForegroundDecisionMade' 'Concurrent rule plan must close the timeout race before cache launch/failure.'
-Assert-FileContains $concurrentRulePlan '2 seconds' 'Concurrent rule plan must document cached 2 second foreground wait.'
-Assert-FileContains $concurrentRulePlan '10 seconds' 'Concurrent rule plan must document no-cache 10 second wait.'
-Assert-FileContains $concurrentRulePlan 'first valid higher-version remote' 'Concurrent rule plan must preserve fastest valid higher-version foreground behavior.'
+Assert-FileContains $refactorPlan 'R1' 'Refactor plan must record the confirmed cache race.'
+Assert-FileContains $refactorPlan 'R2' 'Refactor plan must record the signing-key drift problem.'
+Assert-FileContains $refactorPlan 'R3' 'Refactor plan must record the missing executable regression gate.'
+Assert-FileContains $refactorPlan 'tests/verify_refactor.ps1' 'Refactor plan must include the executable refactor contract gate.'
+Assert-FileContains $refactorPlan 'CACHE_WRITE_LOCK' 'Refactor plan must document the process-wide cache write lock.'
+Assert-FileContains $refactorPlan '证书摘要相同' 'Refactor plan must require matching certificates for both APKs.'
+Assert-FileContains $refactorReview 'verify_project.ps1' 'Development review must record the aggregate test-entry requirement.'
 Assert-FileContains $adbSmokeTest 'LaunchVoice' 'ADB smoke test must require an explicit opt-in to launch voice.'
 Assert-FileContains $adbSmokeTest 'LaunchVideo' 'ADB smoke test must require an explicit opt-in to launch video.'
 Assert-FileContains $adbSmokeTest 'MODIFY_AUDIO_SETTINGS' 'ADB smoke test must verify audio settings permission.'
@@ -225,5 +224,10 @@ Assert-FileContains $adbSmokeTest 'android.permission.INTERNET' 'ADB smoke test 
 Assert-FileContains $adbSmokeTest 'resolve-activity' 'ADB smoke test must verify launcher activity resolution.'
 Assert-FileContains $adbSmokeTest 'ROM formats resolve-activity output differently' 'ADB smoke test must explain ROM-dependent resolve output failures.'
 
-powershell -ExecutionPolicy Bypass -File $verifyRules
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File $verifyRules
+if ($LASTEXITCODE -ne 0) { throw 'Rule verification failed.' }
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File $verifyRefactor
+if ($LASTEXITCODE -ne 0) { throw 'Refactor contract verification failed.' }
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File $verifyTouchShield
+if ($LASTEXITCODE -ne 0) { throw 'Touch-shield contract verification failed.' }
 Write-Host 'Project verification passed.'
