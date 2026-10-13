@@ -5,7 +5,7 @@ Two small Android launcher APKs for opening Doubao voice and video calls directl
 - `AI语音`
 - `AI视频`
 
-The apps are intended for elderly or visually impaired users who can ask the phone voice assistant to open one of the launcher apps. Each app immediately routes into the corresponding Doubao call deep link.
+The apps are intended for elderly or visually impaired users who can ask the phone voice assistant to open one of the launcher apps. After one-time family setup, each app opens its rule-driven entry and protects the corresponding Doubao call once foreground and call readiness are confirmed.
 
 ## Purpose
 
@@ -66,18 +66,30 @@ On every launch, the app intentionally maximizes media volume and tries to maxim
 
 Volume changes affect the corresponding Android audio streams globally, not only Doubao.
 
-## Video Touch Shield
+## Call Touch Shield
 
-`AI视频` uses a transparent, touch-consuming foreground overlay so accidental touches do not press controls in the Doubao video call. The overlay is created before the Doubao video intent is dispatched and remains after the launcher Activity exits.
+`AI语音` and `AI视频` share the protection implementation: a semi-transparent, touch-consuming foreground overlay. Version 1.4.1 (code 9) leases a single session across both APKs, prepares the foreground service while the launcher is visible, and opens Doubao only after the authorized listener confirms there is no existing call. Protection appears within three seconds after Doubao is observed in the foreground with a controllable call notification. There is no fixed authorization delay or touch gesture to end the call.
 
-Before first use, a family member must grant `AI视频`:
+Before first use, a family member must grant each launcher:
 
 1. Display over other apps permission.
-2. Notification permission, with the `AI视频` touch-shield notification channel enabled.
+2. Notification permission, with the launcher touch-shield notification channel enabled.
+3. Notification access permission so the launcher can invoke and confirm Doubao's call control.
+4. Usage access permission to observe foreground changes through Android's public usage events.
 
-If either permission is missing or the shield cannot be mounted, the app fails closed and does not open an unprotected video call. The foreground notification contains `解除遮罩` for a family member. Stopping the service removes the overlay and restores normal touch input.
+Home, Back leaving Doubao, Recents and switching apps trigger exit after about 800ms of stable foreground change. Screen off or lock triggers exit immediately. The overlay is removed first, then a bounded notification hangup request is confirmed. A failed hangup leaves input available and reports the failure. The notification action `结束通话` ends both call and protection. A naturally ended call removes protection after a short confirmation; notification query failures are not treated as success. Returning or waking does not restore an old session. Pending authorization, network failure or lack of call evidence never creates a shield.
 
-The shield covers application content only. Android system actions such as Home, system Back gestures, and the notification shade are outside the control of a normal APK. `AI语音` does not request overlay or foreground-service permissions and does not use the shield.
+On the tested OnePlus, Back can show Doubao's own hangup confirmation while Doubao remains in the foreground. Protection stays in that case; Home, lock or the protection notification can end the call. Repeated explicit launcher requests use `singleTop` / `onNewIntent`, while ordinary Activity resume does not start another call.
+
+Runtime permissions are continuous state-machine inputs. If permission is revoked while a call is still starting, the withdrawn session keeps observing late call evidence and its original startup deadline. It ends a late controllable call without displaying protection, or finishes when the deadline expires. Restoring permission does not revive a withdrawn session.
+
+Video can bind to the signed voice companion for a disconnected local listener, retaining the bounded eight-second local retry and twelve-second bridge window. Every operation carries the session token and notification key and checks current ownership before acting. Old callbacks, abort commands and notification actions cannot stop a later session. When both APKs are installed, both must support this session protocol; updating only one APK is not supported. Video alone uses its own registry.
+
+Android usage access does not expose Doubao's window geometry. Floating-window or split-screen mode is not independently detected, including when already active before launch. A foreground change through Recents or another app is still an exit. Notification shade and volume panels alone are not exits.
+
+If the video process cannot use its own live notification listener, it may request the voice APK's listener through an explicit internal bridge. The bridge is protected by a signature-level permission and accepts only the signed companion APK; it is not an ADB or process-kill path.
+
+The shield covers application content only. Android system actions such as Home, system Back gestures, and the notification shade are outside the control of a normal APK. The two launchers share the protection implementation but keep separate package processes and voice/video entry rules.
 
 ## Doubao Entry Maintenance
 
@@ -143,4 +155,6 @@ The smoke test checks device state, package installation, audio settings permiss
 
 ## Test Scope
 
-`tests\verify_project.ps1` is a structural/configuration guard and includes the touch-shield contract gate. It verifies important code and manifest markers but does not prove TTS timing, actual system volume changes, overlay touch interception, foreground-service survival, or Doubao deep-link behavior on every ROM. Those behaviors require the build, optional ADB smoke test, and targeted manual launch checks when needed.
+`tests\verify_project.ps1` runs session and lease unit tests, the actual foreground observer and call-end coordinator with Android boundary stubs, and structural/configuration guards. It preserves rule/cache/audio/signing checks. Real phone tests use `tests\foreground_adb.ps1 -Serial <phone> -Mode voice -Exit home -LaunchCall` and require an unlocked, exclusively available phone. They verify the shown window surface, current Doubao call notification, window removal and notification disappearance; they never force-stop Doubao. TTS, OEM behavior and physical audio routing still require device evidence.
+
+The aggregate gate includes continuous session input and device evidence boundary checks. Generated `work/` is excluded from Git. The phone runner saves only the presence or absence of Doubao call notification 101, using a shared converter; it does not request unredacted notification text. Existing local raw evidence is preserved, while only filtered evidence should be shared.

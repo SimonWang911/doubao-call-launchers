@@ -1,5 +1,7 @@
 # AI视频触摸遮罩重构计划开发前 Review
 
+> 历史 Review：2026-10-13 已由 [当前设计及实施结果](2026-10-13-foreground-session-refactor-plan.md) 取代。下文关于先挂罩、旧版本和旧范围的结论不适用于当前代码。
+
 ## Review 范围
 
 - Review 对象：`docs/refactor/2026-10-11-video-touch-shield-refactor-plan.md`。

@@ -20,6 +20,7 @@ import android.util.Log;
 import android.widget.Toast;
 
 import java.util.Locale;
+import java.util.UUID;
 
 public class CallLauncherActivity extends Activity {
     private static final String TAG = "DoubaoCallLauncher";
@@ -27,7 +28,6 @@ public class CallLauncherActivity extends Activity {
     private static final String MODE_VIDEO = "video";
     private static final long SHORT_FINISH_DELAY_MILLIS = 1200L;
     private static final long MAX_FINISH_DELAY_MILLIS = 6000L;
-    private static final long SHIELD_READY_TIMEOUT_MILLIS = 3000L;
     private static final String STATUS_UTTERANCE_ID = "doubao_call_launcher_status";
 
     private static final String OPENING_VOICE_MESSAGE = "\u6b63\u5728\u542f\u52a8\u8c46\u5305\u8bed\u97f3";
@@ -40,21 +40,23 @@ public class CallLauncherActivity extends Activity {
             "\u6253\u5f00\u8c46\u5305\u5931\u8d25\uff0c\u8bf7\u5bb6\u4eba\u534f\u52a9\u68c0\u67e5\u3002";
     private static final String RULE_LOAD_FAILED_MESSAGE =
             "\u89c4\u5219\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u5bb6\u4eba\u68c0\u67e5\u7f51\u7edc\u6216\u89c4\u5219\u6587\u4ef6\u3002";
-    private static final String VIDEO_SHIELD_PERMISSION_MESSAGE =
+    private static final String SHIELD_PERMISSION_MESSAGE =
             "\u8bf7\u5bb6\u4eba\u5148\u5f00\u542f\u60ac\u6d6e\u7a97\u548c\u901a\u77e5\u6743\u9650\u3002";
-    private static final String VIDEO_SHIELD_FAILED_MESSAGE =
-            "\u89c6\u9891\u901a\u8bdd\u4fdd\u62a4\u542f\u52a8\u5931\u8d25\uff0c\u8bf7\u5bb6\u4eba\u68c0\u67e5\u8bbe\u7f6e\u3002";
+    private static final String CALL_CONTROL_PERMISSION_MESSAGE =
+            "\u8bf7\u5bb6\u4eba\u5148\u5f00\u542f\u901a\u77e5\u8bfb\u53d6\u6743\u9650\u3002";
+    private static final String SHIELD_FAILED_MESSAGE =
+            "\u901a\u8bdd\u4fdd\u62a4\u542f\u52a8\u5931\u8d25\uff0c\u8bf7\u5bb6\u4eba\u68c0\u67e5\u8bbe\u7f6e\u3002";
 
     private TextToSpeech tts;
     private boolean activityDestroyed;
     private boolean finishRequested;
+    private boolean openingAnnouncementDone;
     private Runnable timeoutFinishRunnable;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private Intent pendingVideoIntent;
-    private String pendingVideoMode;
-    private boolean shieldStartPending;
-    private boolean shieldSessionStarted;
-    private Runnable shieldReadyTimeoutRunnable;
+    private boolean visible, leaseOwned, transferred;
+    private String sessionToken = UUID.randomUUID().toString();
+    private Runnable preparationRetry, preparationTimeout;
+    private long preparationDeadline;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,10 +64,19 @@ public class CallLauncherActivity extends Activity {
         launchDoubaoCall();
     }
 
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent);
+        abortPreparation(); cancelTimeoutFinish(); shutdownTts();
+        sessionToken = UUID.randomUUID().toString();
+        leaseOwned = false; transferred = false; finishRequested = false; openingAnnouncementDone = false;
+        launchDoubaoCall();
+    }
+
     private void launchDoubaoCall() {
         maximizeAudibleVolume();
 
         final String mode = readLaunchMode();
+        final String requestToken = sessionToken;
         Log.i(TAG, "launch mode=" + mode);
 
         final RuleRepository repository = new RuleRepository(getApplicationContext());
@@ -76,7 +87,7 @@ public class CallLauncherActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        if (activityDestroyed) {
+                        if (activityDestroyed || !requestToken.equals(sessionToken)) {
                             return;
                         }
                         handleRuleResult(mode, result);
@@ -95,7 +106,6 @@ public class CallLauncherActivity extends Activity {
     }
 
     private void openDoubaoCall(String mode, DoubaoRule rule) {
-        boolean video = MODE_VIDEO.equals(mode);
         CallEntry entry = rule.entryForMode(mode);
 
         if (!isPackageInstalled(rule.doubaoPackage)) {
@@ -110,56 +120,64 @@ public class CallLauncherActivity extends Activity {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         Log.i(TAG, "starting Doubao intent=" + intent.toUri(0));
 
-        if (video) {
-            startVideoShieldAndOpen(mode, intent);
-            return;
-        }
-
-        dispatchDoubaoIntent(mode, intent, false);
+        launchDoubaoThenArmShield(mode, intent);
     }
 
-    private void startVideoShieldAndOpen(final String mode, final Intent intent) {
+    private void launchDoubaoThenArmShield(final String mode, final Intent intent) {
         if (!canDrawOverlays() || !areNotificationsEnabled()) {
-            speakAndToast(VIDEO_SHIELD_PERMISSION_MESSAGE);
+            speakAndToast(SHIELD_PERMISSION_MESSAGE);
             return;
         }
-
-        pendingVideoMode = mode;
-        pendingVideoIntent = intent;
-        shieldStartPending = true;
-        shieldSessionStarted = false;
-
+        if (!CallEndCoordinator.isNotificationListenerEnabled(this)) {
+            speakAndToast(CALL_CONTROL_PERMISSION_MESSAGE);
+            return;
+        }
+        if (!ForegroundObserver.hasPermission(this)) {
+            speakAndToast("请家人开启使用情况访问权限");
+            startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        preparationDeadline = android.os.SystemClock.elapsedRealtime() + 25000;
+        awaitSessionLease(mode, intent);
+    }
+    private void awaitSessionLease(final String mode, final Intent intent) {
+        if (activityDestroyed || !visible) return;
+        if (SessionRegistry.acquire(this, sessionToken)) {
+            leaseOwned = true;
+            startTouchShield(mode, intent);
+            return;
+        }
+        if (android.os.SystemClock.elapsedRealtime() >= preparationDeadline) {
+            speakAndToast("上次通话尚未结束或会话服务不可用，请稍后重试");
+            return;
+        }
+        preparationRetry = new Runnable() {
+            @Override public void run() { preparationRetry = null; awaitSessionLease(mode, intent); }
+        };
+        mainHandler.postDelayed(preparationRetry, 200);
+    }
+    private void startTouchShield(final String mode, final Intent doubaoIntent) {
+        final String preparationToken = sessionToken;
         ResultReceiver resultReceiver = new ResultReceiver(mainHandler) {
             @Override
             protected void onReceiveResult(int resultCode, Bundle resultData) {
-                if (!shieldStartPending || activityDestroyed) {
-                    if (activityDestroyed) {
-                        stopVideoShield();
-                    }
+                if (!preparationToken.equals(sessionToken) || transferred) return;
+                if (activityDestroyed || !visible || !leaseOwned) { abortPreparation(); return; }
+                if (resultCode == TouchShieldService.RESULT_PREPARED) {
+                    dispatchDoubaoIntent(mode, doubaoIntent);
                     return;
                 }
-
-                shieldStartPending = false;
-                cancelShieldReadyTimeout();
-                if (resultCode == TouchShieldService.RESULT_READY) {
-                    shieldSessionStarted = true;
-                    Intent readyIntent = pendingVideoIntent;
-                    String readyMode = pendingVideoMode;
-                    pendingVideoIntent = null;
-                    pendingVideoMode = null;
-                    dispatchDoubaoIntent(readyMode, readyIntent, true);
-                    return;
-                }
-
-                pendingVideoIntent = null;
-                pendingVideoMode = null;
-                stopVideoShield();
-                speakAndToast(VIDEO_SHIELD_FAILED_MESSAGE);
+                abortPreparation();
+                speakAndToast(SHIELD_FAILED_MESSAGE);
             }
         };
 
-        armShieldReadyTimeout();
-        Intent serviceIntent = TouchShieldService.createStartIntent(this, resultReceiver);
+        preparationTimeout = new Runnable() {
+            @Override public void run() { if (preparationToken.equals(sessionToken) && !transferred) { abortPreparation(); speakAndToast(SHIELD_FAILED_MESSAGE); } }
+        };
+        mainHandler.postDelayed(preparationTimeout, 12000);
+        CallEndCoordinator.requestRebind(this);
+        Intent serviceIntent = TouchShieldService.createPrepareIntent(this, resultReceiver, sessionToken);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent);
@@ -168,33 +186,27 @@ public class CallLauncherActivity extends Activity {
             }
         } catch (RuntimeException ex) {
             Log.e(TAG, "Could not start the touch-shield service.", ex);
-            shieldStartPending = false;
-            pendingVideoIntent = null;
-            pendingVideoMode = null;
-            cancelShieldReadyTimeout();
-            stopVideoShield();
-            speakAndToast(VIDEO_SHIELD_FAILED_MESSAGE);
+            abortPreparation();
+            speakAndToast(SHIELD_FAILED_MESSAGE);
         }
     }
 
-    private void dispatchDoubaoIntent(String mode, Intent intent, boolean shieldStarted) {
+    private void dispatchDoubaoIntent(String mode, Intent intent) {
         try {
+            long dispatchTimeMillis = System.currentTimeMillis();
             startActivity(intent);
             Log.i(TAG, "Doubao startActivity dispatched.");
+            startService(TouchShieldService.createArmIntent(this, sessionToken, dispatchTimeMillis));
+            transferred = true;
+            if (preparationTimeout != null) mainHandler.removeCallbacks(preparationTimeout);
             speakAndToast(MODE_VIDEO.equals(mode) ? OPENING_VIDEO_MESSAGE : OPENING_VOICE_MESSAGE);
         } catch (ActivityNotFoundException ex) {
             Log.e(TAG, "Doubao activity not found.", ex);
-            if (shieldStarted) {
-                shieldSessionStarted = false;
-                stopVideoShield();
-            }
+            abortPreparation();
             speakAndToast(ENTRY_UNAVAILABLE_MESSAGE);
         } catch (RuntimeException ex) {
             Log.e(TAG, "Failed to open Doubao.", ex);
-            if (shieldStarted) {
-                shieldSessionStarted = false;
-                stopVideoShield();
-            }
+            abortPreparation();
             speakAndToast(OPEN_FAILED_MESSAGE);
         }
     }
@@ -207,40 +219,14 @@ public class CallLauncherActivity extends Activity {
         return TouchShieldService.areNotificationsEnabled(this);
     }
 
-    private void armShieldReadyTimeout() {
-        cancelShieldReadyTimeout();
-        shieldReadyTimeoutRunnable = new Runnable() {
-            @Override
-            public void run() {
-                shieldReadyTimeoutRunnable = null;
-                if (!activityDestroyed && shieldStartPending) {
-                    shieldStartPending = false;
-                    pendingVideoIntent = null;
-                    pendingVideoMode = null;
-                    stopVideoShield();
-                    speakAndToast(VIDEO_SHIELD_FAILED_MESSAGE);
-                }
-            }
-        };
-        mainHandler.postDelayed(shieldReadyTimeoutRunnable, SHIELD_READY_TIMEOUT_MILLIS);
-    }
-
-    private void cancelShieldReadyTimeout() {
-        if (shieldReadyTimeoutRunnable != null) {
-            mainHandler.removeCallbacks(shieldReadyTimeoutRunnable);
-            shieldReadyTimeoutRunnable = null;
-        }
-    }
-
-    private void stopVideoShield() {
-        Intent stopIntent = TouchShieldService.createStopIntent(getApplicationContext());
-        stopIntent.setAction(TouchShieldService.ACTION_STOP);
-        try {
-            startService(stopIntent);
-        } catch (RuntimeException ex) {
-            Log.w(TAG, "Could not dispatch shield stop action; stopping service directly.", ex);
-            stopService(stopIntent);
-        }
+    private void abortPreparation() {
+        if (preparationRetry != null) mainHandler.removeCallbacks(preparationRetry);
+        if (preparationTimeout != null) mainHandler.removeCallbacks(preparationTimeout);
+        if (transferred || !leaseOwned) return;
+        try { startService(TouchShieldService.createAbortIntent(this, sessionToken)); }
+        catch (RuntimeException error) { Log.w(TAG, "Could not cancel preparation", error); }
+        SessionRegistry.release(this, sessionToken);
+        leaseOwned = false;
     }
 
     private void maximizeAudibleVolume() {
@@ -308,13 +294,17 @@ public class CallLauncherActivity extends Activity {
     }
 
     private void speakAndToast(final String message) {
+        final String announcementToken = sessionToken;
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        shutdownTts();
+        openingAnnouncementDone = false;
+        finishRequested = false;
         final TextToSpeech[] engineHolder = new TextToSpeech[1];
         TextToSpeech engine = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
                 TextToSpeech activeEngine = engineHolder[0];
-                if (activityDestroyed || activeEngine == null || activeEngine != tts) {
+                if (activityDestroyed || !announcementToken.equals(sessionToken) || activeEngine == null || activeEngine != tts) {
                     if (activeEngine != null) {
                         activeEngine.shutdown();
                     }
@@ -336,12 +326,12 @@ public class CallLauncherActivity extends Activity {
 
                     @Override
                     public void onDone(String utteranceId) {
-                        finishSoon();
+                        finishAnnouncement(announcementToken, activeEngine);
                     }
 
                     @Override
                     public void onError(String utteranceId) {
-                        finishSoon();
+                        finishAnnouncement(announcementToken, activeEngine);
                     }
                 });
 
@@ -359,12 +349,14 @@ public class CallLauncherActivity extends Activity {
 
     private void armTtsTimeout() {
         cancelTimeoutFinish();
+        final String timeoutToken = sessionToken;
         timeoutFinishRunnable = new Runnable() {
             @Override
             public void run() {
                 timeoutFinishRunnable = null;
-                if (!activityDestroyed && !finishRequested) {
-                    finishNow();
+                if (!activityDestroyed && timeoutToken.equals(sessionToken) && !openingAnnouncementDone) {
+                    Log.w(TAG, "TextToSpeech did not finish before timeout.");
+                    finishSoon();
                 }
             }
         };
@@ -372,19 +364,36 @@ public class CallLauncherActivity extends Activity {
     }
 
     private void finishSoon() {
-        if (activityDestroyed || finishRequested) {
+        if (activityDestroyed || openingAnnouncementDone) {
+            return;
+        }
+        openingAnnouncementDone = true;
+        cancelTimeoutFinish();
+        maybeFinishAfterStartup();
+    }
+
+    private void finishAnnouncement(final String expectedToken, final TextToSpeech expectedEngine) {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                if (expectedToken.equals(sessionToken) && expectedEngine == tts) finishSoon();
+            }
+        });
+    }
+
+    private void maybeFinishAfterStartup() {
+        if (activityDestroyed || finishRequested || !openingAnnouncementDone) {
             return;
         }
         finishRequested = true;
-        cancelTimeoutFinish();
         finishAfterDelay(SHORT_FINISH_DELAY_MILLIS);
     }
 
     private void finishAfterDelay(long delayMillis) {
+        final String finishingToken = sessionToken;
         getWindow().getDecorView().postDelayed(new Runnable() {
             @Override
             public void run() {
-                finishNow();
+                if (finishingToken.equals(sessionToken)) finishNow();
             }
         }, delayMillis);
     }
@@ -417,14 +426,14 @@ public class CallLauncherActivity extends Activity {
     protected void onDestroy() {
         activityDestroyed = true;
         cancelTimeoutFinish();
-        cancelShieldReadyTimeout();
-        if (shieldStartPending && !shieldSessionStarted) {
-            shieldStartPending = false;
-            pendingVideoIntent = null;
-            pendingVideoMode = null;
-            stopVideoShield();
-        }
+        abortPreparation();
         shutdownTts();
         super.onDestroy();
+    }
+    @Override protected void onResume() { super.onResume(); visible = true; }
+    @Override protected void onPause() {
+        visible = false;
+        if (!transferred) { abortPreparation(); finish(); }
+        super.onPause();
     }
 }

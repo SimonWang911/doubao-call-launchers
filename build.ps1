@@ -49,21 +49,25 @@ function Build-App {
     $AlignedApk = Join-Path $Work "$Name-aligned.apk"
     $FinalApk = Join-Path $OutDir "doubao-$Name-call.apk"
 
-    Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
+    $ResolvedWork = [IO.Path]::GetFullPath($Work)
+    $BuildRoot = [IO.Path]::GetFullPath((Join-Path $Root 'build')) + [IO.Path]::DirectorySeparatorChar
+    if ($Name -notin @('voice', 'video') -or -not $ResolvedWork.StartsWith($BuildRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Refusing to clean a path outside the app build directory.'
+    }
+    if (Test-Path -LiteralPath $ResolvedWork) {
+        Remove-Item -LiteralPath $ResolvedWork -Recurse -Force
+    }
     New-Item -ItemType Directory -Force $Compiled, $Classes, $Dex | Out-Null
 
     & $Aapt2 compile --dir (Join-Path $AppRoot 'res') -o $Compiled
     if ($LASTEXITCODE -ne 0) { throw "aapt2 compile failed for $Name" }
 
     $FlatFiles = Get-ChildItem $Compiled -Filter '*.flat' | ForEach-Object { $_.FullName }
-    & $Aapt2 link `
-        -o $LinkedApk `
-        -I $AndroidJar `
-        --manifest (Join-Path $AppRoot 'AndroidManifest.xml') `
-        --java (Join-Path $Work 'gen') `
-        --min-sdk-version 23 `
-        --target-sdk-version 36 `
-        $FlatFiles
+    $LinkArguments = @('link', '-o', $LinkedApk, '-I', $AndroidJar,
+        '--manifest', (Join-Path $AppRoot 'AndroidManifest.xml'),
+        '--java', (Join-Path $Work 'gen'), '--min-sdk-version', '23', '--target-sdk-version', '36')
+    $LinkArguments += $FlatFiles
+    & $Aapt2 @LinkArguments
     if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed for $Name" }
 
     $Sources = Get-ChildItem (Join-Path $Root 'common\src') -Recurse -Filter '*.java' | ForEach-Object { $_.FullName }
@@ -78,6 +82,7 @@ function Build-App {
     Push-Location $Dex
     try {
         jar uf $UnsignedApk classes.dex
+        if ($LASTEXITCODE -ne 0) { throw "jar update failed for $Name" }
     } finally {
         Pop-Location
     }
@@ -85,13 +90,9 @@ function Build-App {
     & $ZipAlign -p -f 4 $UnsignedApk $AlignedApk
     if ($LASTEXITCODE -ne 0) { throw "zipalign failed for $Name" }
 
-    & $ApkSigner sign `
-        --ks $KeyStore `
-        --ks-key-alias $KeyAlias `
-        --ks-pass "pass:$KeyStorePass" `
-        --key-pass "pass:$KeyPass" `
-        --out $FinalApk `
-        $AlignedApk
+    $SignArguments = @('sign', '--ks', $KeyStore, '--ks-key-alias', $KeyAlias,
+        '--ks-pass', "pass:$KeyStorePass", '--key-pass', "pass:$KeyPass", '--out', $FinalApk, $AlignedApk)
+    & $ApkSigner @SignArguments
     if ($LASTEXITCODE -ne 0) { throw "apksigner failed for $Name" }
 
     & $ApkSigner verify --verbose $FinalApk

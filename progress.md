@@ -94,3 +94,95 @@
 ### Notes
 
 - This Xiaomi run is the current device evidence for the video shield, notification stop action, voice separation, rule-driven Doubao entry, and volume protection. No source code changes were needed during the device test.
+
+## 2026-10-13 - Task: integrate reviewed 1.4.1 refactor and deliver formal APKs
+
+### What was done
+
+- 完成已Review前台会话重构的发布范围核验，源码、测试和开发文档准备集成到当前master，远端基线一致。
+- 重新构建1.4.1/code9正式签名语音及视频APK；保留原签名和已实测可执行内容，排除debug/test标记。
+- 生成正式构建记录；不把本地原始验收资料、签名或APK纳入源码提交。
+
+### Testing
+
+- tests/verify_project.ps1完整通过：CallSession 62、SessionLease 13、ForegroundObserver 15、实际CallEndCoordinator 9场景、通知证据边界41、真实ADB读取适配5场景，以及规则/配置/挂断/遮罩门禁。
+- build.ps1双包构建成功；apksigner v1/v2/v3与原证书校验通过；二进制Manifest及aapt2元数据确认1.4.1/code9、非debug/test。
+- 新两包全部非签名ZIP条目与此前真机验收1.4.1逐项哈希一致；构建期间源文件和keystore哈希未变；无旧双击路径DEX符号。
+- 所有tests PowerShell脚本解析和git diff --check通过。真实手机结果及未重测边界沿用项目最终Review，不声称本轮新增真机测试。
+
+### Notes
+
+- .gitignore：忽略本地work验收生成物，保留历史原件。
+- apps/video/AndroidManifest.xml：同步1.4.1版本、会话组件及签名权限配置。
+- apps/voice/AndroidManifest.xml：同步1.4.1版本、会话组件及签名权限配置。
+- build.ps1：保留经Review的SDK定位与限定构建目录清理。
+- common/src/com/simon/doubaolauncher/CallEndBridgeService.java：实现同签名跨包挂断接口和会话归属校验。
+- common/src/com/simon/doubaolauncher/CallEndCoordinator.java：统一有截止的通知挂断及跨包回退。
+- common/src/com/simon/doubaolauncher/CallLauncherActivity.java：迁移统一会话准备和启动流程，保留规则、音量及TTS。
+- common/src/com/simon/doubaolauncher/CallSession.java：集中生命周期和ENDING持续推进。
+- common/src/com/simon/doubaolauncher/DoubaoNotificationListenerService.java：提供通知状态及受当前会话约束的结束操作。
+- common/src/com/simon/doubaolauncher/EndRequestPolicy.java：统一结束请求归属和一次完成判断。
+- common/src/com/simon/doubaolauncher/ForegroundObserver.java：通过公开使用事件观察前台切换。
+- common/src/com/simon/doubaolauncher/SessionLease.java：定义跨包会话租约状态。
+- common/src/com/simon/doubaolauncher/SessionRegistry.java：访问统一会话注册与归属。
+- common/src/com/simon/doubaolauncher/SessionRegistryProvider.java：提供同签名进程间租约注册。
+- common/src/com/simon/doubaolauncher/TouchShieldService.java：统一前台/屏幕/权限状态输入、先撤罩后结束。
+- docs/refactor/2026-10-11-video-shield-call-end-final-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-11-video-shield-call-end-plan-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-11-video-shield-call-end-refactor-plan.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-11-video-shield-call-end-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-11-video-touch-shield-plan-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-11-video-touch-shield-refactor-plan.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-12-double-tap-auth-sequencing-plan-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-12-double-tap-auth-sequencing-refactor-plan.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-13-1.4.1-formal-release.md：记录正式包签名、哈希、验收范围和回滚点。
+- docs/refactor/2026-10-13-ending-progress-evidence-final-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-13-ending-progress-evidence-plan-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-13-ending-progress-evidence-plan.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-13-foreground-session-final-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-13-foreground-session-plan-review.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- docs/refactor/2026-10-13-foreground-session-refactor-plan.md：纳入对应设计/Review记录及最终证据，旧方案保留弃用标记。
+- progress.md：追加本次正式构建、验证和提交范围记录。
+- README.md：同步前台状态退出、四项授权、1.4.1及证据边界说明。
+- tests/call_notification_evidence.ps1：共享纯通知证据转换并拒绝非法格式。
+- tests/foreground_adb.ps1：验证真实窗口/通知，最小通知采集及限定只读恢复。
+- tests/java/CallSessionTest.java：保留原特征并覆盖权限撤销、迟到、截止和恢复边界。
+- tests/java/coordinator/android/content/ComponentName.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/content/Context.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/content/Intent.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/content/ServiceConnection.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/Build.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/Bundle.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/Handler.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/IBinder.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/Looper.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/Message.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/Messenger.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/RemoteException.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/ResultReceiver.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/os/SystemClock.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/provider/Settings.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/service/notification/NotificationListenerService.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/android/util/Log.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/com/simon/doubaolauncher/CallEndBridgeService.java：实现同签名跨包挂断接口和会话归属校验。
+- tests/java/coordinator/com/simon/doubaolauncher/CallEndCoordinatorTest.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/coordinator/com/simon/doubaolauncher/DoubaoNotificationListenerService.java：提供通知状态及受当前会话约束的结束操作。
+- tests/java/coordinator/com/simon/doubaolauncher/SessionRegistry.java：访问统一会话注册与归属。
+- tests/java/EndRequestPolicyTest.java：验证结束请求归属和重复完成边界。
+- tests/java/foreground/android/app/AppOpsManager.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/foreground/android/app/usage/UsageEvents.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/foreground/android/app/usage/UsageStatsManager.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/foreground/android/content/Context.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/foreground/android/os/Process.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/foreground/com/simon/doubaolauncher/ForegroundObserverTest.java：提供实际协调器/观察器测试所需的最小Android边界夹具。
+- tests/java/SessionLeaseTest.java：验证租约及跨包归属边界。
+- tests/verify_adb_read_recovery.ps1：执行真实读取函数验证5种外部ADB响应。
+- tests/verify_call_end.ps1：验证挂断接口、归属及桥契约。
+- tests/verify_coordinator.ps1：运行实际协调器的Android边界场景。
+- tests/verify_evidence_boundary.ps1：验证实际Git边界、最小采集及历史真值。
+- tests/verify_foreground_observer.ps1：运行实际观察器的使用事件场景。
+- tests/verify_foreground_session.ps1：运行生命周期/租约/结束策略并禁止旧路径。
+- tests/verify_project.ps1：纳入全部回归门禁及1.4.1配置。
+- tests/verify_session_inputs.ps1：约束Service连续输入和撤罩顺序。
+- tests/verify_touch_shield.ps1：迁移到统一前台会话契约并禁止旧检测路径。
+- 可执行回滚：以提交前3a95e98741e2d08d070a79301a6da96fa9831273为基线，发布后用git log定位本次refactor提交，git revert <发布提交SHA>。不reset/强推、不删历史证据、不更换签名。实际推送结果及提交SHA记录于最终交付release-receipt.md。

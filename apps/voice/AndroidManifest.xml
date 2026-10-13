@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.simon.doubao.voicecall"
-    android:versionCode="5"
-    android:versionName="1.2.0">
+    android:versionCode="9"
+    android:versionName="1.4.1">
 
+    <permission
+        android:name="com.simon.doubao.voicecall.permission.END_CALL"
+        android:protectionLevel="signature" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
 
     <queries>
         <package android:name="com.larus.nova" />
+        <package android:name="com.simon.doubao.videocall" />
     </queries>
 
     <application
@@ -19,8 +28,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <provider
+            android:name="com.simon.doubaolauncher.SessionRegistryProvider"
+            android:authorities="com.simon.doubao.voicecall.sessions"
+            android:permission="com.simon.doubao.voicecall.permission.END_CALL"
+            android:exported="true" />
         <activity
             android:name="com.simon.doubaolauncher.CallLauncherActivity"
+            android:launchMode="singleTop"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -31,5 +46,27 @@
                 android:name="com.simon.doubaolauncher.MODE"
                 android:value="voice" />
         </activity>
+        <service
+            android:name="com.simon.doubaolauncher.TouchShieldService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="full-screen touch shield for protected Doubao call" />
+        </service>
+        <service
+            android:name="com.simon.doubaolauncher.DoubaoNotificationListenerService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name="com.simon.doubaolauncher.CallEndBridgeService"
+            android:permission="com.simon.doubao.voicecall.permission.END_CALL"
+            android:exported="true" />
     </application>
 </manifest>
