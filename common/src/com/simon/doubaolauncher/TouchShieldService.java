@@ -29,7 +29,7 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Owns one leased session, its overlay and its bounded call-end operation. */
+/** Owns one app-local session, its overlay and its bounded call-end operation. */
 public final class TouchShieldService extends Service {
     private static final String TAG = "DoubaoTouchShield";
     private static final String CHANNEL_ID = "doubao_call_touch_shield";
@@ -49,7 +49,7 @@ public final class TouchShieldService extends Service {
     private WindowManager windows;
     private FrameLayout shield;
     private boolean foreground, prepared, destroyed, receiverRegistered;
-    private long prepareDeadline, nextRenew, nextRebind;
+    private long prepareDeadline, nextRebind;
     private String lastInputs;
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { tick(); }
@@ -59,10 +59,7 @@ public final class TouchShieldService extends Service {
             if (destroyed || session == null) return;
             handler.removeCallbacks(this);
             long now = SystemClock.elapsedRealtime();
-            if (now >= nextRenew) {
-                if (!SessionRegistry.renew(TouchShieldService.this, token)) { finishSession(true); return; }
-                nextRenew = now + 1000;
-            }
+            if (!SessionOwnership.isCurrent(token)) { finishSession(true); return; }
             if (now >= nextRebind && !CallEndCoordinator.isListenerConnected()) {
                 CallEndCoordinator.requestRebind(TouchShieldService.this); nextRebind = now + 2000;
             }
@@ -126,7 +123,7 @@ public final class TouchShieldService extends Service {
         String incoming = intent.getStringExtra(EXTRA_TOKEN), action = intent.getAction();
         if (ACTION_PREPARE.equals(action)) {
             if (session != null) return START_NOT_STICKY;
-            if (!SessionRegistry.isCurrent(this, incoming)) { stopSelf(startId); return START_NOT_STICKY; }
+            if (!SessionOwnership.adopt(incoming)) { stopSelf(startId); return START_NOT_STICKY; }
             token = incoming;
             receiver = Build.VERSION.SDK_INT >= 33 ? intent.getParcelableExtra(EXTRA_RECEIVER, ResultReceiver.class)
                     : intent.getParcelableExtra(EXTRA_RECEIVER);
@@ -225,7 +222,7 @@ public final class TouchShieldService extends Service {
     private void cleanup() {
         handler.removeCallbacksAndMessages(null); removeShield();
         CallEndCoordinator.cancel(endRequest); endRequest = null;
-        SessionRegistry.release(this, token); token = null; session = null; observer = null;
+        SessionOwnership.release(token); token = null; session = null; observer = null;
         if (foreground) { if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE); else stopForeground(true); foreground = false; }
     }
     @Override public void onDestroy() {

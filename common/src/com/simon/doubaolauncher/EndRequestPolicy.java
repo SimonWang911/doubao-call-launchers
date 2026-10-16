@@ -5,8 +5,6 @@ final class EndRequestPolicy {
     static final long RETRY_INTERVAL_MILLIS = 200L;
     static final long RETRY_WINDOW_MILLIS = 8000L;
     static final long HANGUP_CONFIRM_TIMEOUT_MILLIS = 3000L;
-    static final long BRIDGE_TIMEOUT_MILLIS =
-            RETRY_WINDOW_MILLIS + HANGUP_CONFIRM_TIMEOUT_MILLIS + 1000L;
 
     private final long deadlineMillis;
     private boolean completed;

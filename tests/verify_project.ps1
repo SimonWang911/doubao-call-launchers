@@ -62,6 +62,7 @@ $sessionTest = Join-Path $Root 'tests/java/CallSessionTest.java'
 $callEndPlan = Join-Path $Root 'docs/refactor/2026-10-11-video-shield-call-end-refactor-plan.md'
 $callEndReview = Join-Path $Root 'docs/refactor/2026-10-11-video-shield-call-end-plan-review.md'
 $finalCallEndReview = Join-Path $Root 'docs/refactor/2026-10-11-video-shield-call-end-final-review.md'
+$independentFinalReview = Join-Path $Root 'docs/refactor/2026-10-16-independent-launchers-final-review.md'
 $adbSmokeTest = Join-Path $Root 'tests/smoke_adb.ps1'
 $gitignore = Join-Path $Root '.gitignore'
 $readme = Join-Path $Root 'README.md'
@@ -70,10 +71,10 @@ $videoAppName = 'AI视频'
 
 Assert-FileContains $voiceManifest 'package="com.simon.doubao.voicecall"' 'Voice manifest must use the voice package name.'
 Assert-FileContains $videoManifest 'package="com.simon.doubao.videocall"' 'Video manifest must use the video package name.'
-Assert-FileContains $voiceManifest 'android:versionCode="9"' 'Voice APK must declare versionCode 9.'
-Assert-FileContains $voiceManifest 'android:versionName="1.4.1"' 'Voice APK must declare versionName 1.4.1.'
-Assert-FileContains $videoManifest 'android:versionCode="9"' 'Video APK must declare versionCode 9.'
-Assert-FileContains $videoManifest 'android:versionName="1.4.1"' 'Video APK must declare versionName 1.4.1.'
+Assert-FileContains $voiceManifest 'android:versionCode="10"' 'Voice APK must declare versionCode 10.'
+Assert-FileContains $voiceManifest 'android:versionName="1.4.2"' 'Voice APK must declare versionName 1.4.2.'
+Assert-FileContains $videoManifest 'android:versionCode="10"' 'Video APK must declare versionCode 10.'
+Assert-FileContains $videoManifest 'android:versionName="1.4.2"' 'Video APK must declare versionName 1.4.2.'
 Assert-FileContains $voiceStrings "<string name=`"app_name`">$voiceAppName</string>" 'Voice app name must be exact.'
 Assert-FileContains $videoStrings "<string name=`"app_name`">$videoAppName</string>" 'Video app name must be exact.'
 Assert-FileContains $voiceManifest 'com.simon.doubaolauncher.MODE' 'Voice manifest must pass a launch mode.'
@@ -129,6 +130,7 @@ Assert-Exists $sessionTest
 Assert-Exists $callEndPlan
 Assert-Exists $callEndReview
 Assert-Exists $finalCallEndReview
+Assert-Exists $independentFinalReview
 Assert-Exists $adbSmokeTest
 Assert-Exists $ruleUrlCandidates
 Assert-Exists $callEntry
@@ -230,7 +232,7 @@ Assert-FileContains $refactorPlan 'tests/verify_refactor.ps1' 'Refactor plan mus
 Assert-FileContains $refactorPlan 'CACHE_WRITE_LOCK' 'Refactor plan must document the process-wide cache write lock.'
 Assert-FileContains $refactorPlan '证书摘要相同' 'Refactor plan must require matching certificates for both APKs.'
 Assert-FileContains $refactorReview 'verify_project.ps1' 'Development review must record the aggregate test-entry requirement.'
-Assert-FileContains $finalCallEndReview '签名级权限' 'Final code review must record the bridge permission boundary.'
+Assert-FileContains $independentFinalReview 'SessionOwnership' 'Current final review must document app-local session ownership.'
 Assert-FileContains $adbSmokeTest 'LaunchVoice' 'ADB smoke test must require an explicit opt-in to launch voice.'
 Assert-FileContains $adbSmokeTest 'LaunchVideo' 'ADB smoke test must require an explicit opt-in to launch video.'
 Assert-FileContains $adbSmokeTest 'MODIFY_AUDIO_SETTINGS' 'ADB smoke test must verify audio settings permission.'
@@ -242,6 +244,8 @@ pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File $verifyRules
 if ($LASTEXITCODE -ne 0) { throw 'Rule verification failed.' }
 pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File $verifyRefactor
 if ($LASTEXITCODE -ne 0) { throw 'Refactor contract verification failed.' }
+pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'verify_independence.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Independent ownership verification failed.' }
 pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File $verifySession
 if ($LASTEXITCODE -ne 0) { throw 'Foreground session verification failed.' }
 pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'verify_session_inputs.ps1')

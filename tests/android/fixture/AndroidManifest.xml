@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.larus.nova" android:versionCode="1" android:versionName="integration-fixture">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="36" />
+    <application android:debuggable="true" android:label="Doubao integration fixture">
+        <activity android:name="com.simon.doubaotest.FixtureActivity" android:exported="true" />
+        <activity-alias android:name="com.larus.home.impl.alias.AliasActivity1" android:targetActivity="com.simon.doubaotest.FixtureActivity" android:exported="true" />
+        <receiver android:name="com.simon.doubaotest.FixtureReceiver" android:exported="true" />
+    </application>
+</manifest>

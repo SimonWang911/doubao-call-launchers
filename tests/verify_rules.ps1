@@ -10,9 +10,10 @@ if (-not (Test-Path $RulePath)) {
 @'
 import copy
 import json
+import sys
 from pathlib import Path
 
-rule_path = Path("rules/doubao-call-rules.json")
+rule_path = Path(sys.argv[1])
 rule = json.loads(rule_path.read_text(encoding="utf-8"))
 
 def validate_rule(value):
@@ -133,4 +134,5 @@ assert urls[3].startswith("https://ghfast.top/https://raw.githubusercontent.com/
 assert all(url.endswith("?t=123") for url in urls)
 
 print("Rule verification passed.")
-'@ | python -
+'@ | python - $RulePath
+if ($LASTEXITCODE -ne 0) { throw 'Rule verification failed.' }

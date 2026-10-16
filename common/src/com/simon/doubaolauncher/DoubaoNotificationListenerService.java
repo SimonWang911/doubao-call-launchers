@@ -98,7 +98,7 @@ public final class DoubaoNotificationListenerService extends NotificationListene
     }
 
     private void beginHangup(String token, String key, CallEndCoordinator.EndCallback callback) {
-        if (key == null || !SessionRegistry.isCurrent(this, token)) {
+        if (key == null || !SessionOwnership.isCurrent(token)) {
             notifyResult(callback, CallEndCoordinator.Result.CANCELLED);
             return;
         }
@@ -215,7 +215,7 @@ public final class DoubaoNotificationListenerService extends NotificationListene
                 continue;
             }
             try {
-                if (!SessionRegistry.isCurrent(this, token)) return false;
+                if (!SessionOwnership.isCurrent(token)) return false;
                 action.actionIntent.send();
                 return true;
             } catch (PendingIntent.CanceledException ex) {
@@ -239,7 +239,7 @@ public final class DoubaoNotificationListenerService extends NotificationListene
 
     private boolean performRemoteViewClick(String token, RemoteViews remoteViews) {
         View hangupView = findHangupView(remoteViews);
-        return hangupView != null && SessionRegistry.isCurrent(this, token) && hangupView.performClick();
+        return hangupView != null && SessionOwnership.isCurrent(token) && hangupView.performClick();
     }
 
     private View findHangupView(RemoteViews remoteViews) {
@@ -277,7 +277,7 @@ public final class DoubaoNotificationListenerService extends NotificationListene
         if (request == null) {
             return;
         }
-        if (!SessionRegistry.isCurrent(this, request.token)) {
+        if (!SessionOwnership.isCurrent(request.token)) {
             finishPending(CallEndCoordinator.Result.CANCELLED);
             return;
         }

@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.simon.doubao.independencetest">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="36" />
+    <application android:label="Independent launcher integration test" />
+    <instrumentation android:name="com.simon.doubaolauncher.VoiceIntegrationProbe" android:targetPackage="com.simon.doubao.voicecall" />
+    <instrumentation android:name="com.simon.doubaolauncher.VideoIntegrationProbe" android:targetPackage="com.simon.doubao.videocall" />
+</manifest>

@@ -2,17 +2,9 @@ package com.simon.doubaolauncher;
 
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.IBinder;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.RemoteException;
-import android.os.ResultReceiver;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
@@ -21,7 +13,6 @@ import android.util.Log;
 /** Coordinates one bounded, serialized request to end a Doubao call. */
 final class CallEndCoordinator {
     private static final String TAG = "DoubaoCallEndCoordinator";
-    private static final String VOICE_PACKAGE = "com.simon.doubao.voicecall";
     private static final String ENABLED_LISTENERS_SETTING = "enabled_notification_listeners";
     private static final Object LOCK = new Object();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
@@ -74,17 +65,8 @@ final class CallEndCoordinator {
     }
 
     static EndRequest requestEnd(Context context, String token, String key, EndCallback callback) {
-        return createRequest(context, token, key, callback, true);
-    }
-
-    static EndRequest requestLocalEnd(Context context, String token, String key, EndCallback callback) {
-        return createRequest(context, token, key, callback, false);
-    }
-    private static EndRequest createRequest(Context context, String token, String key,
-            EndCallback callback, boolean allowBridge) {
         if (callback == null || context == null) throw new IllegalArgumentException("Context and callback required");
-        final EndRequest request = new EndRequest(
-                context.getApplicationContext(), token, key, callback, allowBridge);
+        final EndRequest request = new EndRequest(context.getApplicationContext(), token, key, callback);
         MAIN_HANDLER.post(new Runnable() {
             @Override
             public void run() {
@@ -109,14 +91,14 @@ final class CallEndCoordinator {
         if (request.completed || request.localAttemptInFlight) {
             return;
         }
-        if (request.key == null || !SessionRegistry.isCurrent(request.context, request.token)) {
+        if (request.key == null || !SessionOwnership.isCurrent(request.token)) {
             complete(request, Result.CANCELLED);
             return;
         }
 
         long now = SystemClock.elapsedRealtime();
         if (!request.policy.shouldRetry(now)) {
-            startBridgeOrFinish(request);
+            complete(request, Result.UNAVAILABLE);
             return;
         }
 
@@ -159,7 +141,7 @@ final class CallEndCoordinator {
         if (request.policy.shouldRetry(SystemClock.elapsedRealtime())) {
             scheduleLocalRetry(request);
         } else {
-            startBridgeOrFinish(request);
+            complete(request, Result.UNAVAILABLE);
         }
     }
 
@@ -180,103 +162,6 @@ final class CallEndCoordinator {
         MAIN_HANDLER.postDelayed(request.retryRunnable, EndRequestPolicy.RETRY_INTERVAL_MILLIS);
     }
 
-    private static void startBridgeOrFinish(final EndRequest request) {
-        if (request.completed || request.bridgeStarted) {
-            return;
-        }
-        if (!SessionRegistry.isCurrent(request.context, request.token)) {
-            complete(request, Result.CANCELLED);
-            return;
-        }
-        if (request.allowBridge && request.context != null
-                && !VOICE_PACKAGE.equals(request.context.getPackageName())) {
-            request.bridgeStarted = true;
-            Log.i(TAG, "Local listener retry window ended; requesting the voice bridge.");
-            requestBridge(request);
-            return;
-        }
-        complete(request, Result.UNAVAILABLE);
-    }
-
-    private static void requestBridge(final EndRequest request) {
-        final ResultReceiver receiver = new ResultReceiver(MAIN_HANDLER) {
-            @Override
-            protected void onReceiveResult(int resultCode, Bundle resultData) {
-                complete(request, resultFromCode(resultCode));
-            }
-        };
-        Intent bridgeIntent = new Intent(CallEndBridgeService.ACTION_END);
-        bridgeIntent.setComponent(new ComponentName(
-                VOICE_PACKAGE, CallEndBridgeService.class.getName()));
-        bridgeIntent.putExtra(
-                CallEndBridgeService.EXTRA_CALLER_PACKAGE, request.context.getPackageName());
-
-        request.bridgeConnection = new ServiceConnection() {
-            @Override
-            public void onServiceConnected(ComponentName name, IBinder binder) {
-                if (request.completed || request.bridgeMessageSent) {
-                    return;
-                }
-                if (!SessionRegistry.isCurrent(request.context, request.token)) {
-                    complete(request, Result.CANCELLED);
-                    return;
-                }
-                request.bridgeMessageSent = true;
-                Bundle data = new Bundle();
-                data.putParcelable(CallEndBridgeService.EXTRA_RESULT_RECEIVER, receiver);
-                data.putString(CallEndBridgeService.EXTRA_CALLER_PACKAGE, request.context.getPackageName());
-                data.putString(CallEndBridgeService.EXTRA_SESSION_ID, request.token);
-                data.putString(CallEndBridgeService.EXTRA_NOTIFICATION_KEY, request.key);
-                Message message = Message.obtain(null, CallEndBridgeService.MESSAGE_END);
-                message.setData(data);
-                try {
-                    new Messenger(binder).send(message);
-                } catch (RemoteException | RuntimeException ex) {
-                    Log.w(TAG, "Could not send the bound voice bridge request.", ex);
-                    complete(request, Result.UNAVAILABLE);
-                }
-            }
-
-            @Override
-            public void onServiceDisconnected(ComponentName name) {
-                complete(request, Result.UNAVAILABLE);
-            }
-
-            @Override
-            public void onNullBinding(ComponentName name) {
-                complete(request, Result.UNAVAILABLE);
-            }
-
-            @Override
-            public void onBindingDied(ComponentName name) {
-                complete(request, Result.UNAVAILABLE);
-            }
-        };
-
-        request.bridgeTimeoutRunnable = new Runnable() {
-            @Override
-            public void run() {
-                request.bridgeTimeoutRunnable = null;
-                if (!request.completed) {
-                    Log.w(TAG, "Voice bridge did not return an end result in time.");
-                    complete(request, Result.UNAVAILABLE);
-                }
-            }
-        };
-        MAIN_HANDLER.postDelayed(request.bridgeTimeoutRunnable, EndRequestPolicy.BRIDGE_TIMEOUT_MILLIS);
-
-        try {
-            request.bridgeBound = request.context.bindService(
-                    bridgeIntent, request.bridgeConnection, Context.BIND_AUTO_CREATE);
-            if (!request.bridgeBound) {
-                complete(request, Result.UNAVAILABLE);
-            }
-        } catch (RuntimeException ex) {
-            Log.w(TAG, "Could not start the voice control bridge.", ex);
-            complete(request, Result.UNAVAILABLE);
-        }
-    }
-
     private static void complete(EndRequest request, Result result) {
         if (request.completed || !request.policy.complete()) {
             return;
@@ -288,18 +173,6 @@ final class CallEndCoordinator {
         if (request.retryRunnable != null) {
             MAIN_HANDLER.removeCallbacks(request.retryRunnable);
             request.retryRunnable = null;
-        }
-        if (request.bridgeTimeoutRunnable != null) {
-            MAIN_HANDLER.removeCallbacks(request.bridgeTimeoutRunnable);
-            request.bridgeTimeoutRunnable = null;
-        }
-        if (request.bridgeBound && request.bridgeConnection != null) {
-            request.bridgeBound = false;
-            try {
-                request.context.unbindService(request.bridgeConnection);
-            } catch (RuntimeException ex) {
-                Log.w(TAG, "Could not unbind the voice control bridge.", ex);
-            }
         }
         Log.i(TAG, "Doubao call-end result=" + result);
         try {
@@ -313,15 +186,6 @@ final class CallEndCoordinator {
         synchronized (LOCK) {
             return listener;
         }
-    }
-
-    private static Result resultFromCode(int code) {
-        Result[] results = Result.values();
-        int index = code - 1;
-        if (index < 0 || index >= results.length) {
-            return Result.FAILED;
-        }
-        return results[index];
     }
 
     static boolean isNotificationListenerEnabled(Context context) {
@@ -363,24 +227,17 @@ final class CallEndCoordinator {
         final String key;
         final EndCallback callback;
         final EndRequestPolicy policy;
-        final boolean allowBridge;
         boolean completed;
         boolean localAttemptInFlight;
         int localAttemptNumber;
-        boolean bridgeStarted;
-        boolean bridgeBound;
-        boolean bridgeMessageSent;
-        ServiceConnection bridgeConnection;
         Runnable retryRunnable;
-        Runnable bridgeTimeoutRunnable;
 
-        EndRequest(Context context, String token, String key, EndCallback callback, boolean allowBridge) {
+        EndRequest(Context context, String token, String key, EndCallback callback) {
             this.context = context;
             this.token = token;
             this.key = key;
             this.callback = callback;
             this.policy = new EndRequestPolicy(SystemClock.elapsedRealtime());
-            this.allowBridge = allowBridge;
         }
     }
 }

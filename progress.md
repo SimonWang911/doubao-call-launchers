@@ -186,3 +186,111 @@
 - tests/verify_session_inputs.ps1：约束Service连续输入和撤罩顺序。
 - tests/verify_touch_shield.ps1：迁移到统一前台会话契约并禁止旧检测路径。
 - 可执行回滚：以提交前3a95e98741e2d08d070a79301a6da96fa9831273为基线，发布后用git log定位本次refactor提交，git revert <发布提交SHA>。不reset/强推、不删历史证据、不更换签名。实际推送结果及提交SHA记录于最终交付release-receipt.md。
+
+## 2026-10-16 - Task: 双启动器独立性设计复核和开发门禁
+### What was done
+- 核对基线3daf735及真实启动、续租、挂断和清单，确认R1-R4同属跨APK运行依赖；编写开发文档和独立开发前Review。
+- 修正LocalSocket错误分类假设，采用公开Os.bind的仅loopback绑定独占资源；无监听、通信、常驻服务或新增权限。
+- 在只读Android测试实例运行不同UID互斥和故障恢复；先建立能在旧实现因真实依赖失败的结构回归。
+### Testing
+- S0两个不同UID的Android包9条操作通过：互斥、正常释放、强停持有者后恢复、卸载另一包后单独运行及系统错误分类；临时包已卸载。证据：任务work/independence-s0/device-result.json。
+- 真实旧verify_independence -ContractOnly按跨包Registry/Provider/lease/桥/权限失败；非编译错误。
+- 完整旧verify_project通过，日志任务work/independence-baseline-project.txt。Android系统适配与真实豆包/OEM验收明确区分。
+### Notes
+- docs/refactor/2026-10-16-independent-launchers-plan.md：根因、目标、接口、迁移、追踪矩阵、阶段与回滚。
+- docs/refactor/2026-10-16-independent-launchers-plan-review.md：独立复审和高优先级修订、S0/S1证据。
+- tests/verify_independence.ps1：先红的独立性门禁；所有权测试随后纳入。
+- tests/java/ownership/：针对真实所有权和系统适配的Android边界及回归用例。
+- 回滚：只移除本轮新增文档和测试即可返回业务基线3daf735，不reset工作区；本阶段未修改业务代码、签名或Git历史。
+
+## 2026-10-16 - Task: S2本地所有权与S3完整控制链迁移
+### What was done
+- 新增系统独占资源适配和本进程所有权，Activity申请、FGS接管至结束清理；删除Registry/Provider/租约、跨包心跳和挂断桥，迁移全部调用方与清单。
+- 保留原有会话状态、通知key、取消/一次完成、前台观察、规则缓存、URI、图标、音量/TTS和原签名。
+### Testing
+- S2真实所有权和系统适配35检查通过，生产适配与S0 Android实测源码hash一致。
+- S3会话62、观察器15、真实coordinator9场景及结构契约通过。初次汇总中的规则子测试从仓库外运行存在假绿，S4发现后已撤销该部分通过结论并修正、完整重跑。
+### Notes
+- 本阶段主要改动为common控制链、两清单与对应tests；逐文件清单统一列于下面S4，避免遗漏删除的旧测试桩。
+- 回滚点3daf735a5fac5e942a2771fbf4beb6c0d83cfbb7；不reset、不覆盖其他修改、不提交或发布。
+
+## 2026-10-16 - Task: S4最终Review、实际APK构建与真实/受控验收
+### What was done
+- 在实际APK矩阵中发现并复现singleTop暂停导致新请求被finish的问题；先修订设计，再按onPause取消/onStop结束的生命周期职责修正。
+- close失败后身份仍有效、后续永久BUSY的故障测试先红后绿；释放先撤销身份，仅重试已结束资源清理。
+- 修正规则验证相对路径及未传递退出码的假绿，迁移遗留历史桥文档断言到当前架构文档。
+- 更新设计、开发前Review、最终Review及README；构建原签名1.4.2/code10两包并在一加覆盖安装。
+### Testing
+- 最终verify_project完整通过：真实所有权39检查、状态62、观察器15、coordinator9、证据边界41（32历史dump）、ADB读取恢复5及规则/缓存/音量/签名等契约。
+- 规则非法ruleVersion=0从临时根目录执行，因正确业务原因返回1；真实规则从仓库外验证通过。
+- 最终生产APK Android API30受控矩阵27/27；追加快速重入两轮、准备期Home等5/5。临时fixture/probe/两应用均清理。夹具结果不冒充真实豆包或荣耀验证。
+- 一加PJD110真实豆包：视频Home、语音Home、视频锁屏3/3；实际遮罩及通知出现、撤罩与通知消失均通过。安装包从手机拉取SHA256与最终构建一致；测试后无通话/遮罩，恢复音量160/9和锁屏120000ms。
+- 两包原证书一致、v1/v2/v3签名通过；非debuggable/testOnly；清单/DEX无旧跨包组件、双击检测和测试夹具；keystore hash未变；git diff --check通过。
+- 主要证据：任务outputs/independent-launchers-1.4.2-20261016/evidence/及最终Review内逐项矩阵。荣耀当前不可连接，未复测；浮窗几何和音质等边界如最终Review。
+### Notes
+- apps/video/AndroidManifest.xml：移除对方查询、Provider/桥/自定义权限，版本改1.4.2/code10。
+- apps/voice/AndroidManifest.xml：移除对方查询、Provider/桥/自定义权限，版本改1.4.2/code10。
+- common/src/com/simon/doubaolauncher/CallEndBridgeService.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- common/src/com/simon/doubaolauncher/CallEndCoordinator.java：只通过自身监听恢复并结束，删除跨包桥。
+- common/src/com/simon/doubaolauncher/CallLauncherActivity.java：改本地归属、错误分类、明确dispatch日志和重入生命周期。
+- common/src/com/simon/doubaolauncher/DoubaoNotificationListenerService.java：实际挂断动作改为本地当前token校验。
+- common/src/com/simon/doubaolauncher/EndRequestPolicy.java：删除仅用于旧桥的超时常量。
+- common/src/com/simon/doubaolauncher/KernelCallLock.java：新增公开Os.bind的独占资源适配，不监听或通信。
+- common/src/com/simon/doubaolauncher/SessionLease.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- common/src/com/simon/doubaolauncher/SessionOwnership.java：管理本地token、服务接管、释放与已结束资源清理。
+- common/src/com/simon/doubaolauncher/SessionRegistry.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- common/src/com/simon/doubaolauncher/SessionRegistryProvider.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- common/src/com/simon/doubaolauncher/TouchShieldService.java：接管本地会话并移除远端续租，保留有界结束顺序。
+- docs/refactor/2026-10-16-independent-launchers-final-review.md：记录真实代码证据、设计复审、修订及最终问题验收映射。
+- docs/refactor/2026-10-16-independent-launchers-plan-review.md：记录真实代码证据、设计复审、修订及最终问题验收映射。
+- docs/refactor/2026-10-16-independent-launchers-plan.md：记录真实代码证据、设计复审、修订及最终问题验收映射。
+- progress.md：按阶段追加本次实施、验证与回滚记录。
+- README.md：同步各APK独立控制、迁移限制和真实/受控测试入口。
+- tests/android_independence.ps1：实装生产APK的27项矩阵及5项生命周期复验，仅限临时模拟器。
+- tests/android/fixture/AndroidManifest.xml：受控豆包入口和通知挂断夹具，仅安装到任务模拟器。
+- tests/android/fixture/FixtureActivity.java：受控豆包入口和通知挂断夹具，仅安装到任务模拟器。
+- tests/android/fixture/FixtureReceiver.java：受控豆包入口和通知挂断夹具，仅安装到任务模拟器。
+- tests/android/probe/AndroidManifest.xml：用实际生产解析器/缓存预置规则，无正式包测试入口。
+- tests/android/probe/IntegrationProbe.java：用实际生产解析器/缓存预置规则，无正式包测试入口。
+- tests/android/probe/VideoIntegrationProbe.java：用实际生产解析器/缓存预置规则，无正式包测试入口。
+- tests/android/probe/VoiceIntegrationProbe.java：用实际生产解析器/缓存预置规则，无正式包测试入口。
+- tests/build_android_independence.ps1：构建明确标记的通知夹具和规则缓存探针，不进入正式包。
+- tests/java/coordinator/android/content/Context.java：迁移真实协调器到本地归属，保留取消、截止与旧回调验证。
+- tests/java/coordinator/android/content/Intent.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/content/ServiceConnection.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/os/Bundle.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/os/IBinder.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/os/Message.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/os/Messenger.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/os/RemoteException.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/android/os/ResultReceiver.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/com/simon/doubaolauncher/CallEndBridgeService.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/coordinator/com/simon/doubaolauncher/CallEndCoordinatorTest.java：迁移真实协调器到本地归属，保留取消、截止与旧回调验证。
+- tests/java/coordinator/com/simon/doubaolauncher/SessionOwnership.java：迁移真实协调器到本地归属，保留取消、截止与旧回调验证。
+- tests/java/coordinator/com/simon/doubaolauncher/SessionRegistry.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/java/ownership/android/system/ErrnoException.java：提供真实所有权/内核适配的最小Android边界与故障/并发回归。
+- tests/java/ownership/android/system/Os.java：提供真实所有权/内核适配的最小Android边界与故障/并发回归。
+- tests/java/ownership/android/system/OsConstants.java：提供真实所有权/内核适配的最小Android边界与故障/并发回归。
+- tests/java/ownership/android/util/Log.java：提供真实所有权/内核适配的最小Android边界与故障/并发回归。
+- tests/java/ownership/com/simon/doubaolauncher/SessionOwnershipTest.java：提供真实所有权/内核适配的最小Android边界与故障/并发回归。
+- tests/java/SessionLeaseTest.java：删除被本地所有权替代的旧类或旧桥专用测试桩。
+- tests/verify_call_end.ps1：迁移独立控制架构的结构与行为门禁，保留无关特征检查。
+- tests/verify_foreground_session.ps1：迁移独立控制架构的结构与行为门禁，保留无关特征检查。
+- tests/verify_independence.ps1：编译真实所有权与系统适配并禁止旧依赖和双击路径。
+- tests/verify_independent_apks.ps1：检查实际APK版本、原签名、清单和DEX残留。
+- tests/verify_project.ps1：迁移独立控制架构的结构与行为门禁，保留无关特征检查。
+- tests/verify_rules.ps1：规则绝对路径入参并检查Python退出码，消除假绿。
+- tests/verify_touch_shield.ps1：迁移独立控制架构的结构与行为门禁，保留无关特征检查。
+- 回滚点：3daf735a5fac5e942a2771fbf4beb6c0d83cfbb7；设备回退须原签名和更高versionCode独立构建，不能卸载清数据；不reset或强推。
+
+## 2026-10-16 - Task: 将独立运行重构合入master并推送
+### What was done
+- 用户在完整重构及验收后明确授权“合并推送”；当前已在master，远端与基线一致，直接提交已审核的53个文件并普通快进推送，不创建额外合并提交。
+- 提交前逐项校验最终同步hash、生产源码与已验收APK来源一致；APK、keystore、work和原始手机证据不纳入Git。
+### Testing
+- 沿用本轮已通过的完整项目门禁、原签名构建、27项Android集成、5项生命周期和一加真实豆包3项结果；交付39个文件hash及29份Android/3份一加精确遮罩窗口重新核对通过。
+- fetch确认HEAD与origin/master无差异；提交前再次检查暂存差异和禁止产物，推送后核对远端提交SHA及工作区。
+### Notes
+- progress.md：追加本次用户授权和提交推送记录，其余52个文件为上一阶段逐项列出的原验收范围，生产代码未再修改。
+- 系统Git HTTPS库加载失败，使用已安装的Codex附带Git正常获取远端；不修改认证配置。
+- 回滚点3daf735a5fac5e942a2771fbf4beb6c0d83cfbb7；若需撤销已推送变更应git revert本次提交，禁止reset或强推。实际提交SHA和远端确认写入任务交付目录push-receipt。

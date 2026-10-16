@@ -53,7 +53,7 @@ public class CallLauncherActivity extends Activity {
     private boolean openingAnnouncementDone;
     private Runnable timeoutFinishRunnable;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private boolean visible, leaseOwned, transferred;
+    private boolean visible, ownershipAcquired, transferred;
     private String sessionToken = UUID.randomUUID().toString();
     private Runnable preparationRetry, preparationTimeout;
     private long preparationDeadline;
@@ -68,7 +68,7 @@ public class CallLauncherActivity extends Activity {
         super.onNewIntent(intent); setIntent(intent);
         abortPreparation(); cancelTimeoutFinish(); shutdownTts();
         sessionToken = UUID.randomUUID().toString();
-        leaseOwned = false; transferred = false; finishRequested = false; openingAnnouncementDone = false;
+        ownershipAcquired = false; transferred = false; finishRequested = false; openingAnnouncementDone = false;
         launchDoubaoCall();
     }
 
@@ -118,7 +118,7 @@ public class CallLauncherActivity extends Activity {
         intent.addCategory(Intent.CATEGORY_LAUNCHER);
         intent.setComponent(new ComponentName(rule.doubaoPackage, rule.doubaoActivity));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        Log.i(TAG, "starting Doubao intent=" + intent.toUri(0));
+        Log.i(TAG, "Doubao intent prepared=" + intent.toUri(0));
 
         launchDoubaoThenArmShield(mode, intent);
     }
@@ -138,21 +138,27 @@ public class CallLauncherActivity extends Activity {
             return;
         }
         preparationDeadline = android.os.SystemClock.elapsedRealtime() + 25000;
-        awaitSessionLease(mode, intent);
+        awaitSessionOwnership(mode, intent);
     }
-    private void awaitSessionLease(final String mode, final Intent intent) {
+    private void awaitSessionOwnership(final String mode, final Intent intent) {
         if (activityDestroyed || !visible) return;
-        if (SessionRegistry.acquire(this, sessionToken)) {
-            leaseOwned = true;
+        SessionOwnership.Acquisition acquisition = SessionOwnership.acquire(sessionToken);
+        if (acquisition == SessionOwnership.Acquisition.ACQUIRED) {
+            ownershipAcquired = true;
             startTouchShield(mode, intent);
             return;
         }
+        if (acquisition == SessionOwnership.Acquisition.UNAVAILABLE) {
+            Log.w(TAG, "Call control unavailable before Doubao dispatch.");
+            speakAndToast("通话控制无法启动，请稍后重试");
+            return;
+        }
         if (android.os.SystemClock.elapsedRealtime() >= preparationDeadline) {
-            speakAndToast("上次通话尚未结束或会话服务不可用，请稍后重试");
+            speakAndToast("当前通话尚未结束，请稍后重试");
             return;
         }
         preparationRetry = new Runnable() {
-            @Override public void run() { preparationRetry = null; awaitSessionLease(mode, intent); }
+            @Override public void run() { preparationRetry = null; awaitSessionOwnership(mode, intent); }
         };
         mainHandler.postDelayed(preparationRetry, 200);
     }
@@ -162,7 +168,7 @@ public class CallLauncherActivity extends Activity {
             @Override
             protected void onReceiveResult(int resultCode, Bundle resultData) {
                 if (!preparationToken.equals(sessionToken) || transferred) return;
-                if (activityDestroyed || !visible || !leaseOwned) { abortPreparation(); return; }
+                if (activityDestroyed || !visible || !ownershipAcquired) { abortPreparation(); return; }
                 if (resultCode == TouchShieldService.RESULT_PREPARED) {
                     dispatchDoubaoIntent(mode, doubaoIntent);
                     return;
@@ -222,11 +228,11 @@ public class CallLauncherActivity extends Activity {
     private void abortPreparation() {
         if (preparationRetry != null) mainHandler.removeCallbacks(preparationRetry);
         if (preparationTimeout != null) mainHandler.removeCallbacks(preparationTimeout);
-        if (transferred || !leaseOwned) return;
+        if (transferred || !ownershipAcquired) return;
         try { startService(TouchShieldService.createAbortIntent(this, sessionToken)); }
         catch (RuntimeException error) { Log.w(TAG, "Could not cancel preparation", error); }
-        SessionRegistry.release(this, sessionToken);
-        leaseOwned = false;
+        SessionOwnership.releaseUnclaimed(sessionToken);
+        ownershipAcquired = false;
     }
 
     private void maximizeAudibleVolume() {
@@ -433,7 +439,11 @@ public class CallLauncherActivity extends Activity {
     @Override protected void onResume() { super.onResume(); visible = true; }
     @Override protected void onPause() {
         visible = false;
-        if (!transferred) { abortPreparation(); finish(); }
+        if (!transferred) abortPreparation();
         super.onPause();
+    }
+    @Override protected void onStop() {
+        if (!transferred) finish();
+        super.onStop();
     }
 }

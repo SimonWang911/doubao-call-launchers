@@ -9,11 +9,10 @@ foreach ($mode in @('voice','video')) {
     $services = @($manifest.manifest.application.service)
     $shield = $services | Where-Object { $_.GetAttribute('name','http://schemas.android.com/apk/res/android').EndsWith('.TouchShieldService') }
     if ($shield.GetAttribute('exported','http://schemas.android.com/apk/res/android') -ne 'false') { throw 'Session service must remain private.' }
-    $provider = $manifest.manifest.application.provider
-    if ($provider.GetAttribute('permission','http://schemas.android.com/apk/res/android') -ne 'com.simon.doubao.voicecall.permission.END_CALL') { throw 'Session registry requires signature protection.' }
+    if ($manifest.manifest.application.provider) { throw 'App-local ownership must not export a registry.' }
 }
 $service = Get-Content -LiteralPath (Join-Path $root 'common/src/com/simon/doubaolauncher/TouchShieldService.java') -Raw -Encoding utf8
-foreach ($required in @('START_NOT_STICKY','Intent.ACTION_SCREEN_OFF','PowerManager','isKeyguardLocked','ForegroundObserver','SessionRegistry.renew','removeViewImmediate','FLAG_NOT_FOCUSABLE','结束通话','DoubaoCallShield:')) {
+foreach ($required in @('START_NOT_STICKY','Intent.ACTION_SCREEN_OFF','PowerManager','isKeyguardLocked','ForegroundObserver','SessionOwnership.isCurrent','removeViewImmediate','FLAG_NOT_FOCUSABLE','结束通话','DoubaoCallShield:')) {
     if (-not $service.Contains($required)) { throw "Missing shield integration contract: $required" }
 }
 foreach ($obsolete in @('DoubleTapDetector','authorizationGraceGate','END_FAILED')) {
